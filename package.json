@@ -1,0 +1,22 @@
+{
+  "name": "discord-status-bot",
+  "version": "1.0.0",
+  "description": "Discord bot giám sát trạng thái Bot và Minecraft Server",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "deploy": "node src/deploy-commands.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "better-sqlite3": "12.4.6",
+    "discord.js": "latest",
+    "dotenv": "latest",
+    "node-cron": "latest",
+    "node-mcstatus": "latest"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}

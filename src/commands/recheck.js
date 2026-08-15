@@ -1,0 +1,29 @@
+import { SlashCommandBuilder } from 'discord.js';
+import config from '../config.js';
+import { runManualCheck } from '../core/monitorController.js';
+import { getStatusMessagePayload } from '../services/statusMessage.js';
+import { getBotStates } from '../monitors/botMonitor.js';
+import { getMcState } from '../monitors/mcMonitor.js';
+
+export const data = new SlashCommandBuilder()
+  .setName('recheck')
+  .setDescription('Force an immediate monitoring cycle (admin only)');
+
+/** @param {import('discord.js').ChatInputCommandInteraction} interaction */
+export async function execute(interaction) {
+  if (interaction.user.id !== config.adminUserId) {
+    await interaction.reply({ content: 'Only the configured admin can use this command.', ephemeral: true });
+    return;
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+  const ran = await runManualCheck();
+  const statusPayload = getStatusMessagePayload(getBotStates(), getMcState());
+
+  await interaction.editReply({
+    content: ran
+      ? '✅ Manual check completed.'
+      : '⏳ A check is already running — showing the latest known status.',
+    ...statusPayload,
+  });
+}

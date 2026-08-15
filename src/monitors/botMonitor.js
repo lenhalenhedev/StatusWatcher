@@ -7,6 +7,7 @@ import {
   recordUp,
   archiveTarget,
   getOpenSessionStart,
+  getTarget,
 } from '../utils/uptimeTracker.js';
 
 /**
@@ -81,6 +82,7 @@ export async function initBotMonitor(guild) {
 
   for (const [, member] of members) {
     if (!isMonitorableBot(member)) continue;
+    if (getTarget(member.id)?.status === 'archived') continue;
     const state = createInitialState(member);
     logInfo(
       'BotMonitor',
@@ -102,12 +104,17 @@ export function getBotStates() {
  * Handle a member joining while the monitor is running.
  * @param {import('discord.js').GuildMember} member
  */
+export function addBotToMonitor(member, { reactivateArchived = false } = {}) {
+  if (!isMonitorableBot(member) || botStates.has(member.id)) return false;
+  if (!reactivateArchived && getTarget(member.id)?.status === 'archived') return false;
+  const state = createInitialState(member);
+  logInfo('BotMonitor', `Bot added and registered: ${state.name}`);
+  return true;
+}
+
 export function handleMemberAdd(member) {
   try {
-    if (!isMonitorableBot(member)) return;
-    if (botStates.has(member.id)) return;
-    const state = createInitialState(member);
-    logInfo('BotMonitor', `New bot joined and registered: ${state.name}`);
+    addBotToMonitor(member);
   } catch (err) {
     logError('BotMonitor.handleMemberAdd', err);
   }
@@ -138,6 +145,12 @@ function stopMonitoring(id) {
   archiveTarget(id);
   botStates.delete(id);
   logInfo('BotMonitor', `Stopped monitoring (archived): ${name}`);
+}
+
+export function removeBotFromMonitor(id) {
+  if (!botStates.has(id)) return false;
+  stopMonitoring(id);
+  return true;
 }
 
 /**
@@ -187,6 +200,7 @@ export async function checkBotStatuses(guild, isConnected) {
 
       let state = botStates.get(id);
       if (!state) {
+        if (getTarget(id)?.status === 'archived') continue;
         state = createInitialState(member);
         logInfo('BotMonitor', `Auto-registered untracked bot: ${state.name}`);
       }

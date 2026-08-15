@@ -108,11 +108,24 @@ client.on('interactionCreate', async (interaction) => {
       return;
     }
 
+    if (interaction.isStringSelectMenu()) {
+      const removeBotCommand = commandMap.get('remove-bot');
+      if (removeBotCommand?.handlesInteraction?.(interaction)) {
+        await removeBotCommand.handleInteraction(interaction);
+      }
+      return;
+    }
+
     if (interaction.isButton()) {
-      await updateStatusComponent(interaction, {
-        getBotStates,
-        getMcState,
-      });
+      const removeBotCommand = commandMap.get('remove-bot');
+      if (removeBotCommand?.handlesInteraction?.(interaction)) {
+        await removeBotCommand.handleInteraction(interaction);
+      } else {
+        await updateStatusComponent(interaction, {
+          getBotStates,
+          getMcState,
+        });
+      }
       return;
     }
 

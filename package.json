@@ -10,13 +10,13 @@
     "test": "node --test"
   },
   "dependencies": {
-    "better-sqlite3": "12.4.6",
-    "discord.js": "14.27.0",
-    "dotenv": "17.4.2",
-    "node-cron": "4.6.0",
-    "node-mcstatus": "1.2.1"
+    "better-sqlite3": "^13.0.13",
+    "discord.js": "^14.27.0",
+    "dotenv": "^17.4.2",
+    "node-cron": "^4.6.0",
+    "node-mcstatus": "^1.2.1"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.0.0"
   }
 }

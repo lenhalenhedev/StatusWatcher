@@ -43,6 +43,7 @@ export async function checkMcServer(isConnected) {
     port: config.mcServerPort,
     maxRetries: config.mcMaxRetries,
     baseDelayMs: config.mcRetryBaseMs,
+    timeoutMs: config.mcStatusTimeoutMs,
   });
 
   // Service failure: keep the previous state to avoid false alarms.

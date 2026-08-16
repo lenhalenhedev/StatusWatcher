@@ -13,7 +13,11 @@ for (const key of [
 process.env.MC_SERVER_PORT = '25565';
 process.env.CHECK_INTERVAL = '30000';
 
-const { updateStatusComponent } = await import('../src/services/statusMessage.js');
+const {
+  updateStatusComponent,
+  getStatusMessagePayload,
+  refreshStatusMessage,
+} = await import('../src/services/statusMessage.js');
 
 function interaction(customId) {
   return {
@@ -26,6 +30,44 @@ function interaction(customId) {
 }
 
 const mcState = { isConfirmedDown: false, lastPingData: null };
+
+test('builds a status payload for the one-shot status command', () => {
+  const payload = getStatusMessagePayload(new Map(), mcState);
+
+  assert.equal(payload.embeds.length, 1);
+  assert.equal(payload.components.length, 1);
+  assert.equal(payload.embeds[0].data.title, '📊 System Status Monitor');
+});
+
+test('recovers the refresh queue after a failed operation', async () => {
+  let fetchCalls = 0;
+  const message = { id: 'status-message', async edit() {} };
+  const channel = {
+    isTextBased: () => true,
+    messages: { fetch: async () => { throw new Error('missing tracked message'); } },
+    async send() { return message; },
+  };
+  const client = {
+    channels: {
+      fetch: async () => {
+        fetchCalls++;
+        if (fetchCalls === 1) throw new Error('temporary channel failure');
+        return channel;
+      },
+    },
+  };
+  const dependencies = {
+    channelId: 'monitor-channel',
+    getBotStates: () => new Map(),
+    getMcState: () => mcState,
+  };
+
+  await assert.rejects(refreshStatusMessage(client, dependencies), /temporary channel failure/);
+  const result = await refreshStatusMessage(client, dependencies);
+
+  assert.equal(result, message);
+  assert.equal(fetchCalls, 2);
+});
 
 test('returns the exact ephemeral error for an invalid previous page', async () => {
   const currentInteraction = interaction('status-page:prev:0');

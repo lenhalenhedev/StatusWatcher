@@ -48,6 +48,24 @@ test('reports service failure (not server down) after exhausting retries', async
   assert.equal(calls, 3); // initial + 2 retries
 });
 
+test('bounds a hanging status provider and classifies it as a service failure', async () => {
+  let calls = 0;
+  const result = await fetchMcStatus({
+    ...BASE,
+    maxRetries: 1,
+    baseDelayMs: 1,
+    timeoutMs: 5,
+    statusFn: () => {
+      calls++;
+      return new Promise(() => {});
+    },
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.error, /timed out/i);
+  assert.equal(calls, 2);
+});
+
 test('fills sensible defaults for missing player/version fields', async () => {
   const statusFn = async () => ({ online: true });
   const result = await fetchMcStatus({ ...BASE, statusFn });

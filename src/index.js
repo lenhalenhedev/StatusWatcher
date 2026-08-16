@@ -9,6 +9,7 @@ import { initMcMonitor, checkMcServer, getMcState } from './monitors/mcMonitor.j
 import { cleanLogChannel } from './handlers/notifier.js';
 import { postDailyDigest } from './handlers/digest.js';
 import { createCheckRunner } from './core/checkCycle.js';
+import { loginWithHandling } from './core/login.js';
 import { registerManualCheck } from './core/monitorController.js';
 import { startHealthServer } from './services/healthServer.js';
 import { commandMap } from './commands/index.js';
@@ -278,8 +279,9 @@ let isShuttingDown = false;
  * connections don't close in time, the process is force-killed rather than
  * hanging forever.
  * @param {string} signal
+ * @param {number} [exitCode=0]
  */
-async function shutdown(signal) {
+async function shutdown(signal, exitCode = 0) {
   if (isShuttingDown) return;
   isShuttingDown = true;
   logInfo('Index', `Received ${signal}. Shutting down gracefully...`);
@@ -324,7 +326,7 @@ async function shutdown(signal) {
 
     logInfo('Index', 'Graceful shutdown complete. Exiting.');
     clearTimeout(hardTimeout);
-    process.exit(0);
+    process.exit(exitCode);
   } catch (err) {
     logError('Index.shutdown.error', err);
     clearTimeout(hardTimeout);
@@ -335,4 +337,8 @@ async function shutdown(signal) {
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 
-client.login(config.token);
+void loginWithHandling(client, config.token, (error) => {
+  state.isConnected = false;
+  logError('Index.login', error);
+  void shutdown('LOGIN_FAILURE', 1);
+});

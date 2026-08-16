@@ -1,4 +1,32 @@
+const DEFAULT_TIMEOUT_MS = 10_000;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function timeoutError(timeoutMs) {
+  return new Error(`Minecraft status request timed out after ${timeoutMs}ms`);
+}
+
+/**
+ * Resolve an async provider within a bounded window. The provider contract does
+ * not expose cancellation, so a late result is ignored after the timeout.
+ * @param {() => Promise<object>} operation
+ * @param {number} timeoutMs
+ * @returns {Promise<object>}
+ */
+async function withTimeout(operation, timeoutMs) {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return operation();
+
+  let timer;
+  try {
+    return await Promise.race([
+      Promise.resolve().then(operation),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(timeoutError(timeoutMs)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /**
  * Default status function: queries mcstatus.io for a Java server.
@@ -27,6 +55,7 @@ async function defaultStatusFn(ip, port) {
  * @param {number} options.port
  * @param {number} [options.maxRetries=3] - extra attempts after the first.
  * @param {number} [options.baseDelayMs=500] - backoff base; delay = base * 2^attempt.
+ * @param {number} [options.timeoutMs=10000] - maximum duration for one provider call; <=0 disables the guard.
  * @param {(ip: string, port: number) => Promise<object>} [options.statusFn]
  * @returns {Promise<{ ok: true, online: boolean, data?: object } | { ok: false, error: string }>}
  */
@@ -36,6 +65,7 @@ export async function fetchMcStatus(options) {
     port,
     maxRetries = 3,
     baseDelayMs = 500,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
     statusFn = defaultStatusFn,
   } = options;
 
@@ -43,7 +73,7 @@ export async function fetchMcStatus(options) {
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const result = await statusFn(ip, port);
+      const result = await withTimeout(() => statusFn(ip, port), timeoutMs);
 
       if (result && result.online) {
         return {

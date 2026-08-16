@@ -14,12 +14,27 @@ import { startHealthServer } from './services/healthServer.js';
 import { commandMap } from './commands/index.js';
 import { refreshStatusMessage, updateStatusComponent } from './services/statusMessage.js';
 
-let isConnected = false;
-let checkLoopHandle = null;
-let healthServer = null;
-let monitoredGuild = null;
-const cronJobs = []; // Mảng quản lý các cron job để dọn dẹp khi tắt máy
+/**
+ * @typedef {Object} AppState
+ * @property {boolean} isConnected
+ * @property {NodeJS.Timeout|null} checkLoopHandle
+ * @property {import('http').Server|null} healthServer
+ * @property {import('discord.js').Guild|null} monitoredGuild
+ */
+
+/** @type {AppState} */
+const state = {
+  isConnected: false,
+  checkLoopHandle: null,
+  healthServer: null,
+  monitoredGuild: null,
+};
+
+/** @type {import('node-cron').ScheduledTask[]} */
+const cronJobs = [];
 const bootTime = Date.now();
+
+const SHUTDOWN_TIMEOUT_MS = 5_000;
 
 const client = new Client({
   intents: [
@@ -30,20 +45,60 @@ const client = new Client({
   ],
 });
 
-client.on('shardDisconnect', () => { isConnected = false; logInfo('Gateway', 'Shard disconnected.'); });
-client.on('shardResume', () => { isConnected = true; logInfo('Gateway', 'Shard resumed.'); });
+client.on('shardDisconnect', () => {
+  state.isConnected = false;
+  logInfo('Gateway', 'Shard disconnected.');
+});
+client.on('shardResume', () => {
+  state.isConnected = true;
+  logInfo('Gateway', 'Shard resumed.');
+});
 
 client.on('guildMemberAdd', (member) => handleMemberAdd(member));
 client.on('guildMemberRemove', (member) => handleMemberRemove(member));
 
 const runner = createCheckRunner({
   client,
-  getGuild: () => monitoredGuild,
-  getConnected: () => isConnected,
+  getGuild: () => state.monitoredGuild,
+  getConnected: () => state.isConnected,
 });
 registerManualCheck(runner.run);
 
+// ---------------------------------------------------------------------------
+// Embed refresh: mutex + trailing-call debounce so overlapping triggers
+// (manual command, interval loop, cron) never fire concurrent API calls.
+// ---------------------------------------------------------------------------
+
+/** @type {Promise<unknown>|null} */
+let refreshInFlight = null;
+let refreshQueued = false;
+
+/**
+ * Refreshes the monitor status embed. Safe to call concurrently from any
+ * number of callers (interval loop, cron job, manual triggers) - calls that
+ * arrive while a refresh is already running are coalesced into a single
+ * trailing refresh instead of stacking up API requests.
+ * @returns {Promise<unknown>}
+ */
 function refreshMonitorEmbed() {
+  if (refreshInFlight) {
+    refreshQueued = true;
+    return refreshInFlight;
+  }
+
+  refreshInFlight = doRefresh().finally(() => {
+    refreshInFlight = null;
+    if (refreshQueued) {
+      refreshQueued = false;
+      refreshMonitorEmbed();
+    }
+  });
+
+  return refreshInFlight;
+}
+
+/** @returns {Promise<unknown>} */
+function doRefresh() {
   return refreshStatusMessage(client, {
     channelId: config.monitorChannelId,
     getBotStates,
@@ -54,51 +109,115 @@ function refreshMonitorEmbed() {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Startup sequence
+// ---------------------------------------------------------------------------
+
 client.once('ready', async () => {
+  // Set presence immediately - don't let anything below delay this.
   try {
-    isConnected = true;
-    logInfo('Index', `Logged in as ${client.user.tag}.`);
-
-    monitoredGuild = await client.guilds.fetch(config.guildId);
-
-    initMcMonitor();
-    await initBotMonitor(monitoredGuild);
-    await checkMcServer(isConnected);
-
-    await cleanLogChannel(client);
-    await refreshMonitorEmbed();
-
     client.user.setPresence({
       activities: [{ name: 'bot & server uptime', type: ActivityType.Watching }],
       status: 'online',
     });
+  } catch (err) {
+    logError('Index.ready.setPresence', err);
+  }
 
-    checkLoopHandle = setInterval(() => { runner.run(); }, config.checkInterval);
+  state.isConnected = true;
+  logInfo('Index', `Logged in as ${client.user.tag}.`);
 
-    healthServer = startHealthServer(() => ({
-      connected: isConnected,
+  // Essential setup: without the guild reference nothing else can run.
+  try {
+    state.monitoredGuild = await client.guilds.fetch(config.guildId);
+  } catch (err) {
+    logError('Index.ready.FATAL', err);
+    setTimeout(() => process.exit(1), 1_000);
+    return;
+  }
+
+  // Each core subsystem is isolated: a failure in one must not prevent the
+  // others from starting (graceful degradation).
+  try {
+    initMcMonitor();
+    await checkMcServer(state.isConnected);
+  } catch (err) {
+    logError('Index.ready.mcMonitor', err);
+  }
+
+  try {
+    await initBotMonitor(state.monitoredGuild);
+  } catch (err) {
+    logError('Index.ready.botMonitor', err);
+  }
+
+  try {
+    state.healthServer = startHealthServer(() => ({
+      connected: state.isConnected,
       uptimeSec: Math.floor((Date.now() - bootTime) / 1_000),
       monitoredBots: getBotStates().size,
       minecraftOnline: !getMcState().isConfirmedDown,
     }));
+  } catch (err) {
+    logError('Index.ready.healthServer', err);
+  }
 
-    // Đẩy các job vào mảng để quản lý dọn dẹp
-    cronJobs.push(cron.schedule('0 17 * * *', () => printUptimeReport()));
-    cronJobs.push(cron.schedule('*/5 * * * *', () => refreshMonitorEmbed()));
-    
-    if (cron.validate(config.dailyDigestCron)) {
-      cronJobs.push(cron.schedule(config.dailyDigestCron, () => postDailyDigest(client)));
-    } else {
-      logError('Index.cron', new Error(`Invalid DAILY_DIGEST_CRON: ${config.dailyDigestCron}`));
+  // Core monitoring loop can start as soon as the subsystems above are up,
+  // regardless of whether the non-critical background tasks below succeed.
+  state.checkLoopHandle = setInterval(() => { runner.run(); }, config.checkInterval);
+
+  cronJobs.push(cron.schedule('0 17 * * *', () => printUptimeReport()));
+  cronJobs.push(cron.schedule('*/5 * * * *', () => refreshMonitorEmbed()));
+
+  if (cron.validate(config.dailyDigestCron)) {
+    cronJobs.push(cron.schedule(config.dailyDigestCron, () => postDailyDigest(client)));
+  } else {
+    logError('Index.cron', new Error(`Invalid DAILY_DIGEST_CRON: ${config.dailyDigestCron}`));
+  }
+
+  logInfo('Index', 'Startup complete. Monitoring is active.');
+
+  // Non-critical background tasks: run after core monitoring is live, and
+  // never allow their failure to affect anything above.
+  void (async () => {
+    try {
+      await cleanLogChannel(client);
+    } catch (err) {
+      logError('Index.ready.cleanLogChannel', err);
     }
 
-    logInfo('Index', 'Startup complete. Monitoring is active.');
-  } catch (err) {
-    logError('Index.ready.FATAL', err);
-    // Nếu lỗi ngay lúc khởi động, hủy diệt process luôn chứ đéo để treo máy làm cảnh!
-    setTimeout(() => process.exit(1), 1000);
-  }
+    try {
+      await refreshMonitorEmbed();
+    } catch (err) {
+      logError('Index.ready.initialEmbedRefresh', err);
+    }
+  })();
 });
+
+// ---------------------------------------------------------------------------
+// Interaction routing
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolves the command responsible for a message component interaction.
+ * Commands opt in by exposing `handlesInteraction`/`handleInteraction` and
+ * are looked up dynamically via the customId prefix convention
+ * ("<commandName>:...") rather than hardcoding specific command names here.
+ * @param {import('discord.js').Interaction} interaction
+ * @returns {import('./commands/index.js').Command|undefined}
+ */
+function resolveComponentHandler(interaction) {
+  const prefix = interaction.customId?.split(':')[0];
+  const byPrefix = prefix ? commandMap.get(prefix) : undefined;
+  if (byPrefix?.handlesInteraction?.(interaction)) return byPrefix;
+
+  // Fallback: scan all registered commands for one that claims this
+  // interaction, in case a command doesn't follow the prefix convention.
+  for (const cmd of commandMap.values()) {
+    if (cmd?.handlesInteraction?.(interaction)) return cmd;
+  }
+  return undefined;
+}
 
 client.on('interactionCreate', async (interaction) => {
   try {
@@ -109,17 +228,15 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     if (interaction.isStringSelectMenu()) {
-      const removeBotCommand = commandMap.get('remove-bot');
-      if (removeBotCommand?.handlesInteraction?.(interaction)) {
-        await removeBotCommand.handleInteraction(interaction);
-      }
+      const cmd = resolveComponentHandler(interaction);
+      if (cmd) await cmd.handleInteraction(interaction);
       return;
     }
 
     if (interaction.isButton()) {
-      const removeBotCommand = commandMap.get('remove-bot');
-      if (removeBotCommand?.handlesInteraction?.(interaction)) {
-        await removeBotCommand.handleInteraction(interaction);
+      const cmd = resolveComponentHandler(interaction);
+      if (cmd) {
+        await cmd.handleInteraction(interaction);
       } else {
         await updateStatusComponent(interaction, {
           getBotStates,
@@ -150,35 +267,69 @@ client.on('interactionCreate', async (interaction) => {
 process.on('unhandledRejection', (reason) => logError('process.unhandledRejection', reason));
 process.on('uncaughtException', (err) => logError('process.uncaughtException', err));
 
+// ---------------------------------------------------------------------------
+// Graceful shutdown
+// ---------------------------------------------------------------------------
+
 let isShuttingDown = false;
+
+/**
+ * Runs the graceful shutdown sequence, bounded by a hard timeout: if
+ * connections don't close in time, the process is force-killed rather than
+ * hanging forever.
+ * @param {string} signal
+ */
 async function shutdown(signal) {
   if (isShuttingDown) return;
   isShuttingDown = true;
   logInfo('Index', `Received ${signal}. Shutting down gracefully...`);
 
-  // 1. Dọn sạch đống Timer và Cron Job ngay lập tức
-  if (checkLoopHandle) clearInterval(checkLoopHandle);
-  cronJobs.forEach(job => job.stop());
+  const hardTimeout = setTimeout(() => {
+    logError('Index.shutdown', new Error(`Shutdown exceeded ${SHUTDOWN_TIMEOUT_MS}ms, forcing exit.`));
+    process.exit(1);
+  }, SHUTDOWN_TIMEOUT_MS);
+  hardTimeout.unref?.();
 
-  // 2. Đóng đóng kết nối đồng bộ/bất đồng bộ an toàn bằng cách bọc trong try-catch
   try {
-    if (healthServer && typeof healthServer.close === 'function') {
-      await new Promise((resolve) => healthServer.close(resolve));
-      logInfo('Index', 'Health server closed.');
+    // 1. Stop timers and cron jobs immediately - no new work should start.
+    if (state.checkLoopHandle) clearInterval(state.checkLoopHandle);
+    cronJobs.forEach((job) => job.stop());
+
+    // 2. Close connections, each isolated so one failure doesn't block others.
+    try {
+      if (state.healthServer && typeof state.healthServer.close === 'function') {
+        await new Promise((resolve) => state.healthServer.close(resolve));
+        logInfo('Index', 'Health server closed.');
+      }
+    } catch (err) {
+      logError('Index.shutdown.healthServer', err);
     }
-    
-    if (typeof closeDatabase === 'function') {
-      await closeDatabase();
-      logInfo('Index', 'Database connection pool closed.');
+
+    try {
+      if (typeof closeDatabase === 'function') {
+        await closeDatabase();
+        logInfo('Index', 'Database connection pool closed.');
+      }
+    } catch (err) {
+      logError('Index.shutdown.database', err);
     }
+
+    // 3. Destroy the Discord client last, and actually await it.
+    try {
+      await client.destroy();
+      logInfo('Index', 'Discord client destroyed.');
+    } catch (err) {
+      logError('Index.shutdown.clientDestroy', err);
+    }
+
+    logInfo('Index', 'Graceful shutdown complete. Exiting.');
+    clearTimeout(hardTimeout);
+    process.exit(0);
   } catch (err) {
     logError('Index.shutdown.error', err);
+    clearTimeout(hardTimeout);
+    process.exit(1);
   }
-
-  // 3. Hủy client discord cuối cùng rồi mới cook tiến trình
-  client.destroy();
-  logInfo('Index', 'Graceful shutdown complete. Exiting.');
-  process.exit(0);
 }
 
 process.on('SIGINT', () => shutdown('SIGINT'));

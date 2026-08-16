@@ -14,6 +14,8 @@ import { registerManualCheck } from './core/monitorController.js';
 import { startHealthServer } from './services/healthServer.js';
 import { commandMap } from './commands/index.js';
 import { refreshStatusMessage, updateStatusComponent } from './services/statusMessage.js';
+import { runBackgroundTask } from './utils/backgroundTask.js';
+import { createInteractionHandler } from './handlers/interactionRouter.js';
 
 /**
  * @typedef {Object} AppState
@@ -165,13 +167,21 @@ client.once('ready', async () => {
 
   // Core monitoring loop can start as soon as the subsystems above are up,
   // regardless of whether the non-critical background tasks below succeed.
-  state.checkLoopHandle = setInterval(() => { runner.run(); }, config.checkInterval);
+  state.checkLoopHandle = setInterval(() => {
+    void runBackgroundTask('Index.checkCycle', () => runner.run());
+  }, config.checkInterval);
 
-  cronJobs.push(cron.schedule('0 17 * * *', () => printUptimeReport()));
-  cronJobs.push(cron.schedule('*/5 * * * *', () => refreshMonitorEmbed()));
+  cronJobs.push(cron.schedule('0 17 * * *', () => {
+    void runBackgroundTask('Index.uptimeReport', () => printUptimeReport());
+  }));
+  cronJobs.push(cron.schedule('*/5 * * * *', () => {
+    void runBackgroundTask('Index.refreshMonitorEmbed', () => refreshMonitorEmbed());
+  }));
 
   if (cron.validate(config.dailyDigestCron)) {
-    cronJobs.push(cron.schedule(config.dailyDigestCron, () => postDailyDigest(client)));
+    cronJobs.push(cron.schedule(config.dailyDigestCron, () => {
+      void runBackgroundTask('Index.dailyDigest', () => postDailyDigest(client));
+    }));
   } else {
     logError('Index.cron', new Error(`Invalid DAILY_DIGEST_CRON: ${config.dailyDigestCron}`));
   }
@@ -199,70 +209,15 @@ client.once('ready', async () => {
 // Interaction routing
 // ---------------------------------------------------------------------------
 
-/**
- * Resolves the command responsible for a message component interaction.
- * Commands opt in by exposing `handlesInteraction`/`handleInteraction` and
- * are looked up dynamically via the customId prefix convention
- * ("<commandName>:...") rather than hardcoding specific command names here.
- * @param {import('discord.js').Interaction} interaction
- * @returns {import('./commands/index.js').Command|undefined}
- */
-function resolveComponentHandler(interaction) {
-  const prefix = interaction.customId?.split(':')[0];
-  const byPrefix = prefix ? commandMap.get(prefix) : undefined;
-  if (byPrefix?.handlesInteraction?.(interaction)) return byPrefix;
+const handleInteraction = createInteractionHandler({
+  commandMap,
+  updateStatusComponent,
+  getBotStates,
+  getMcState,
+});
 
-  // Fallback: scan all registered commands for one that claims this
-  // interaction, in case a command doesn't follow the prefix convention.
-  for (const cmd of commandMap.values()) {
-    if (cmd?.handlesInteraction?.(interaction)) return cmd;
-  }
-  return undefined;
-}
-
-client.on('interactionCreate', async (interaction) => {
-  try {
-    if (interaction.isAutocomplete()) {
-      const cmd = commandMap.get(interaction.commandName);
-      if (cmd?.autocomplete) await cmd.autocomplete(interaction);
-      return;
-    }
-
-    if (interaction.isStringSelectMenu()) {
-      const cmd = resolveComponentHandler(interaction);
-      if (cmd) await cmd.handleInteraction(interaction);
-      return;
-    }
-
-    if (interaction.isButton()) {
-      const cmd = resolveComponentHandler(interaction);
-      if (cmd) {
-        await cmd.handleInteraction(interaction);
-      } else {
-        await updateStatusComponent(interaction, {
-          getBotStates,
-          getMcState,
-        });
-      }
-      return;
-    }
-
-    if (!interaction.isChatInputCommand()) return;
-    const cmd = commandMap.get(interaction.commandName);
-    if (!cmd) return;
-    await cmd.execute(interaction);
-  } catch (err) {
-    logError('Index.interactionCreate', err);
-    if (interaction.isRepliable?.()) {
-      const payload = { content: 'An error occurred while processing the command.', ephemeral: true };
-      try {
-        if (interaction.deferred || interaction.replied) await interaction.editReply(payload);
-        else await interaction.reply(payload);
-      } catch {
-        // Safe ignore
-      }
-    }
-  }
+client.on('interactionCreate', (interaction) => {
+  void handleInteraction(interaction);
 });
 
 process.on('unhandledRejection', (reason) => logError('process.unhandledRejection', reason));

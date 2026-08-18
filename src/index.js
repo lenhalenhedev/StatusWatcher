@@ -141,11 +141,13 @@ client.once('ready', async () => {
 
   // Each core subsystem is isolated: a failure in one must not prevent the
   // others from starting (graceful degradation).
-  try {
-    initMcMonitor();
-    await checkMcServer(state.isConnected);
-  } catch (err) {
-    logError('Index.ready.mcMonitor', err);
+  if (config.mcEnabled) {
+    try {
+      initMcMonitor();
+      await checkMcServer(state.isConnected);
+    } catch (err) {
+      logError('Index.ready.mcMonitor', err);
+    }
   }
 
   try {
@@ -159,7 +161,7 @@ client.once('ready', async () => {
       connected: state.isConnected,
       uptimeSec: Math.floor((Date.now() - bootTime) / 1_000),
       monitoredBots: getBotStates().size,
-      minecraftOnline: !getMcState().isConfirmedDown,
+      ...(config.mcEnabled ? { minecraftOnline: !getMcState().isConfirmedDown } : {}),
     }));
   } catch (err) {
     logError('Index.ready.healthServer', err);

@@ -5,7 +5,7 @@ import { getMcState } from '../monitors/mcMonitor.js';
 
 export const data = new SlashCommandBuilder()
   .setName('status')
-  .setDescription('Show the current status of all monitored bots and the Minecraft server');
+  .setDescription('Show the current status of all monitored targets');
 
 /**
  * @param {import('discord.js').ChatInputCommandInteraction} interaction

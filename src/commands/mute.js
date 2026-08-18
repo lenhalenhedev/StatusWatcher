@@ -11,7 +11,7 @@ export const data = new SlashCommandBuilder()
   .addStringOption((o) =>
     o
       .setName('target')
-      .setDescription('Bot or Minecraft server (name or id)')
+      .setDescription('Target name or id')
       .setRequired(true)
       .setAutocomplete(true),
   )

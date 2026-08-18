@@ -1,5 +1,7 @@
 import { listTargets } from '../utils/uptimeTracker.js';
 
+import config from '../config.js';
+
 // Aliases that always resolve to the Minecraft target.
 const MC_ALIASES = new Set(['mc', 'minecraft', 'minecraft server']);
 
@@ -14,7 +16,7 @@ export function resolveTarget(query) {
   const q = String(query).trim().toLowerCase();
   if (!q) return null;
 
-  const targets = listTargets();
+  const targets = listTargets().filter((target) => config.mcEnabled || target.type !== 'minecraft');
 
   const byId = targets.find((t) => t.id.toLowerCase() === q);
   if (byId) return byId;
@@ -40,6 +42,7 @@ export function buildTargetChoices(query) {
   const q = String(query ?? '').trim().toLowerCase();
 
   return listTargets()
+    .filter((target) => config.mcEnabled || target.type !== 'minecraft')
     .filter((t) => !q || t.name.toLowerCase().includes(q) || t.id.toLowerCase().includes(q))
     .slice(0, 25)
     .map((t) => ({

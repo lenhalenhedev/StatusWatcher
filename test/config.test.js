@@ -18,12 +18,33 @@ const validEnv = {
   CHECK_INTERVAL: '30',
 };
 
+function buildEnv(overrides = {}) {
+  const env = { ...process.env, ...validEnv };
+  for (const [key, value] of Object.entries(overrides)) {
+    if (value === undefined) delete env[key];
+    else env[key] = value;
+  }
+  return env;
+}
+
 function loadConfig(overrides = {}) {
   return execFileSync(
     process.execPath,
     ['--input-type=module', '-e', "import('./src/config.js')"],
-    { cwd, env: { ...process.env, ...validEnv, ...overrides } },
+    { cwd, env: buildEnv(overrides) },
   );
+}
+
+function loadConfigSnapshot(overrides = {}) {
+  return JSON.parse(execFileSync(
+    process.execPath,
+    [
+      '--input-type=module',
+      '-e',
+      "import config from './src/config.js'; process.stdout.write(JSON.stringify(config))",
+    ],
+    { cwd, env: buildEnv(overrides), encoding: 'utf8' },
+  ));
 }
 
 test('rejects a non-numeric Minecraft port', () => {
@@ -42,4 +63,36 @@ test('rejects a non-positive check interval', () => {
 
 test('accepts valid operational values', () => {
   assert.doesNotThrow(() => loadConfig({ MC_STATUS_TIMEOUT_MS: '2500', MC_MAX_RETRIES: '0' }));
+});
+
+test('defaults MC_ENABLE to true for backward compatibility', () => {
+  const config = loadConfigSnapshot({ MC_ENABLE: undefined });
+  assert.equal(config.mcEnabled, true);
+});
+
+test('accepts MC_ENABLE=false without Minecraft connection settings', () => {
+  const config = loadConfigSnapshot({
+    MC_ENABLE: ' false ',
+    MC_SERVER_IP: undefined,
+    MC_SERVER_PORT: undefined,
+    MC_SERVER_NAME: undefined,
+  });
+  assert.equal(config.mcEnabled, false);
+  assert.equal('mcServerIp' in config, false);
+  assert.equal('mcServerPort' in config, false);
+  assert.equal('mcServerName' in config, false);
+});
+
+test('rejects an invalid MC_ENABLE value', () => {
+  assert.throws(
+    () => loadConfig({ MC_ENABLE: 'yes' }),
+    (error) => error.status === 1,
+  );
+});
+
+test('rejects an empty MC_ENABLE value', () => {
+  assert.throws(
+    () => loadConfig({ MC_ENABLE: '  ' }),
+    (error) => error.status === 1,
+  );
 });

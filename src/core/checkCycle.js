@@ -83,26 +83,28 @@ export function createCheckRunner({ client, getGuild, getConnected }) {
       }
 
       // --- Minecraft server ---
-      const mcEvent = await checkMcServer(isConnected);
-      if (!isMuted(MC_TARGET_ID)) {
-        const mcState = getMcState();
-        if (mcEvent.type === 'DOWN') {
-          downItems.push({
-            id: MC_TARGET_ID,
-            name: config.mcServerName,
-            type: 'minecraft',
-            error: mcEvent.error,
-            important: true,
-          });
-        } else if (mcEvent.type === 'UP') {
-          upItems.push({ name: config.mcServerName, type: 'minecraft', downSince: mcEvent.downSince });
-        } else if (mcEvent.type === 'STILL_DOWN' && consumeStillDownReminder(mcState)) {
-          stillItems.push({
-            name: config.mcServerName,
-            type: 'minecraft',
-            downSince: mcEvent.downSince,
-            error: mcEvent.error,
-          });
+      if (config.mcEnabled) {
+        const mcEvent = await checkMcServer(isConnected);
+        if (!isMuted(MC_TARGET_ID)) {
+          const mcState = getMcState();
+          if (mcEvent.type === 'DOWN') {
+            downItems.push({
+              id: MC_TARGET_ID,
+              name: config.mcServerName,
+              type: 'minecraft',
+              error: mcEvent.error,
+              important: true,
+            });
+          } else if (mcEvent.type === 'UP') {
+            upItems.push({ name: config.mcServerName, type: 'minecraft', downSince: mcEvent.downSince });
+          } else if (mcEvent.type === 'STILL_DOWN' && consumeStillDownReminder(mcState)) {
+            stillItems.push({
+              name: config.mcServerName,
+              type: 'minecraft',
+              downSince: mcEvent.downSince,
+              error: mcEvent.error,
+            });
+          }
         }
       }
 

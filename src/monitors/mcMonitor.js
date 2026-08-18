@@ -22,6 +22,7 @@ export function getMcState() {
 
 /** Register the MC server in the uptime tracker. */
 export function initMcMonitor() {
+  if (!config.mcEnabled) return;
   registerTarget(MC_TARGET_ID, config.mcServerName, { type: 'minecraft' });
 }
 
@@ -36,7 +37,7 @@ export function initMcMonitor() {
  * @returns {Promise<{ type: 'ONLINE'|'DOWN'|'STILL_DOWN'|'UP'|null, error?: string, downSince?: number }>}
  */
 export async function checkMcServer(isConnected) {
-  if (!isConnected) return { type: null };
+  if (!config.mcEnabled || !isConnected) return { type: null };
 
   const status = await fetchMcStatus({
     ip: config.mcServerIp,

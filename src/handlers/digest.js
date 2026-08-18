@@ -16,7 +16,8 @@ const FIELD_VALUE_LIMIT = 1024;
  * @returns {EmbedBuilder}
  */
 function buildDigestEmbed() {
-  const targets = listTargets({ activeOnly: true });
+  const targets = listTargets({ activeOnly: true })
+    .filter((target) => config.mcEnabled || target.type !== 'minecraft');
 
   const embed = new EmbedBuilder()
     .setTitle('📅 Daily Uptime Digest')

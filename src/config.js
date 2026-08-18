@@ -1,13 +1,31 @@
 import 'dotenv/config';
 
+function boolEnv(key, fallback) {
+  const raw = process.env[key];
+  if (raw === undefined) return fallback;
+
+  const normalized = raw.trim().toLowerCase();
+  if (normalized === 'true') return true;
+  if (normalized === 'false') return false;
+
+  console.error(`[CONFIG FATAL] ${key} must be true or false.`);
+  process.exit(1);
+  return fallback;
+}
+
+const mcEnabled = boolEnv('MC_ENABLE', true);
+
 // Required environment variables. Missing one should fail fast.
 const REQUIRED_VARS = [
   'TOKEN', 'CLIENT_ID', 'GUILD_ID',
   'MONITOR_CHANNEL_ID', 'LOG_CHANNEL_ID',
-  'MC_SERVER_IP', 'MC_SERVER_PORT', 'MC_SERVER_NAME',
   'IMPORTANT_ROLE_ID', 'ADMIN_USER_ID',
   'CHECK_INTERVAL',
 ];
+
+if (mcEnabled) {
+  REQUIRED_VARS.push('MC_SERVER_IP', 'MC_SERVER_PORT', 'MC_SERVER_NAME');
+}
 
 for (const key of REQUIRED_VARS) {
   if (!process.env[key]) {
@@ -60,14 +78,15 @@ const resolvedBackoffSec = backoffStepsSec.length > 0
   : [firstBackoffStepSec, 300, 1_800];
 
 export default Object.freeze({
+  mcEnabled,
   token:            process.env.TOKEN,
   clientId:         process.env.CLIENT_ID,
   guildId:          process.env.GUILD_ID,
   monitorChannelId: process.env.MONITOR_CHANNEL_ID,
   logChannelId:     process.env.LOG_CHANNEL_ID,
-  mcServerIp:       process.env.MC_SERVER_IP,
-  mcServerPort:     intEnv('MC_SERVER_PORT', 25565, { min: 1, max: 65_535 }),
-  mcServerName:     process.env.MC_SERVER_NAME,
+  mcServerIp:       mcEnabled ? process.env.MC_SERVER_IP : undefined,
+  mcServerPort:     mcEnabled ? intEnv('MC_SERVER_PORT', 25565, { min: 1, max: 65_535 }) : undefined,
+  mcServerName:     mcEnabled ? process.env.MC_SERVER_NAME : undefined,
   importantRoleId:  process.env.IMPORTANT_ROLE_ID,
   adminUserId:      process.env.ADMIN_USER_ID,
 

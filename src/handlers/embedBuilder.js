@@ -59,29 +59,31 @@ export function buildStatusEmbed(botStates, mcState, page = 0) {
     .setTimestamp();
 
   // --- Minecraft Server section ---
-  let mcField = '🟡 **Checking...**';
+  if (config.mcEnabled) {
+    let mcField = '🟡 **Checking...**';
 
-  if (mcState.isConfirmedDown) {
-    const min = downtimeMinutes(MC_TARGET_ID, mcState.confirmedDownAt);
-    const errorText = String(mcState.lastError ?? 'Unknown connection error').substring(0, 500);
-    mcField =
-      `🔴 **DOWN** — Down for **${min} min**\n` +
-      `\`\`Error: ${errorText}\`\`\n` +
-      `${buildUptimeLine(MC_TARGET_ID)}`;
-  } else if (mcState.lastPingData) {
-    const players = mcState.lastPingData.players ?? 0;
-    const maxPlayers = mcState.lastPingData.maxPlayers ?? 0;
-    mcField =
-      `🟢 **ONLINE** — \`${config.mcServerName}\`\n` +
-      `Players: **${players}/${maxPlayers}**\n` +
-      `${buildUptimeLine(MC_TARGET_ID)}`;
+    if (mcState.isConfirmedDown) {
+      const min = downtimeMinutes(MC_TARGET_ID, mcState.confirmedDownAt);
+      const errorText = String(mcState.lastError ?? 'Unknown connection error').substring(0, 500);
+      mcField =
+        `🔴 **DOWN** — Down for **${min} min**\n` +
+        `\`\`Error: ${errorText}\`\`\n` +
+        `${buildUptimeLine(MC_TARGET_ID)}`;
+    } else if (mcState.lastPingData) {
+      const players = mcState.lastPingData.players ?? 0;
+      const maxPlayers = mcState.lastPingData.maxPlayers ?? 0;
+      mcField =
+        `🟢 **ONLINE** — \`${config.mcServerName}\`\n` +
+        `Players: **${players}/${maxPlayers}**\n` +
+        `${buildUptimeLine(MC_TARGET_ID)}`;
+    }
+
+    embed.addFields({
+      name: '🎮 Minecraft Server',
+      value: String(mcField).substring(0, FIELD_VALUE_LIMIT),
+      inline: false,
+    });
   }
-
-  embed.addFields({
-    name: '🎮 Minecraft Server',
-    value: String(mcField).substring(0, FIELD_VALUE_LIMIT),
-    inline: false,
-  });
 
   // --- Bot sections (chunked to respect the 1024-character field limit) ---
   if (!botStates || botStates.size === 0) {

@@ -3,6 +3,7 @@ import { listTargets, getDailyUptime } from '../utils/uptimeTracker.js';
 import { getBotStates } from '../monitors/botMonitor.js';
 import { getMcState } from '../monitors/mcMonitor.js';
 import { isMuted } from '../store/muteStore.js';
+import config from '../config.js';
 
 export const data = new SlashCommandBuilder()
   .setName('list')
@@ -20,7 +21,7 @@ function resolveLiveDown(target, botStates, mcState) {
 
 /** @param {import('discord.js').ChatInputCommandInteraction} interaction */
 export async function execute(interaction) {
-  const targets = listTargets();
+  const targets = listTargets().filter((target) => config.mcEnabled || target.type !== 'minecraft');
   if (targets.length === 0) {
     await interaction.reply({ content: 'No targets are being monitored yet.', ephemeral: true });
     return;

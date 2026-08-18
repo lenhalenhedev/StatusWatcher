@@ -1,7 +1,8 @@
 import { SlashCommandBuilder } from 'discord.js';
 import config from '../config.js';
 import { getBotStates } from '../monitors/botMonitor.js';
-import { getMcState } from '../monitors/mcMonitor.js';
+import { getMcStates } from '../monitors/mcMonitor.js';
+import { getDatabaseStates } from '../monitors/databaseMonitor.js';
 import { refreshStatusMessage, resetStatusPage } from '../services/statusMessage.js';
 
 export const data = new SlashCommandBuilder()
@@ -23,7 +24,8 @@ export async function execute(interaction) {
   const message = await refreshStatusMessage(interaction.client, {
     channelId: config.monitorChannelId,
     getBotStates,
-    getMcState,
+    getMcStates,
+    getDatabaseStates,
     forceNew: true,
   });
 

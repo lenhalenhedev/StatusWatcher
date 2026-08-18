@@ -4,6 +4,7 @@ import { runManualCheck } from '../core/monitorController.js';
 import { getStatusMessagePayload } from '../services/statusMessage.js';
 import { getBotStates } from '../monitors/botMonitor.js';
 import { getMcStates } from '../monitors/mcMonitor.js';
+import { getDatabaseStates } from '../monitors/databaseMonitor.js';
 
 export const data = new SlashCommandBuilder()
   .setName('recheck')
@@ -18,7 +19,7 @@ export async function execute(interaction) {
 
   await interaction.deferReply({ ephemeral: true });
   const ran = await runManualCheck();
-  const statusPayload = getStatusMessagePayload(getBotStates(), getMcStates());
+  const statusPayload = getStatusMessagePayload(getBotStates(), getMcStates(), 0, getDatabaseStates());
 
   await interaction.editReply({
     content: ran

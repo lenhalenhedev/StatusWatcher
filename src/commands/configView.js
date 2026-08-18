@@ -14,6 +14,8 @@ export const CONFIG_NAV_PAGE_SIZE = 20;
 export const CONFIG_ITEMS = Object.freeze([
   { id: 'add_mc', label: 'Add MC', description: 'Thêm một Minecraft server bằng tên và host:port.' },
   { id: 'remove_mc', label: 'Remove MC', description: 'Mở dropdown để xóa một Minecraft server đang lưu.' },
+  { id: 'add_database', label: 'Add Database', description: 'Thêm PostgreSQL, MySQL/MariaDB, Redis hoặc MongoDB bằng connect string.' },
+  { id: 'remove_database', label: 'Remove Database', description: 'Mở dropdown để xóa một database đang được theo dõi.' },
   ...Object.entries(RUNTIME_CONFIG_DEFINITIONS).map(([id, definition]) => ({
     id,
     label: definition.label,
@@ -23,6 +25,7 @@ export const CONFIG_ITEMS = Object.freeze([
 
 function displayValue(id) {
   if (id === 'add_mc' || id === 'remove_mc') return `${config.mcServers.length} server(s)`;
+  if (id === 'add_database' || id === 'remove_database') return `${config.databaseTargets.length} database(s)`;
   if (id === 'checkIntervalSec') return `${config.checkInterval / 1_000}s`;
   if (id === 'confirmDownThresholdSec') return `${config.confirmDownThresholdMs / 1_000}s`;
   if (id === 'checkIntervalDisplayLogSec') return `${config.checkIntervalDisplayLogSec}s`;
@@ -80,11 +83,39 @@ export function buildConfigEmbed(page = 0) {
       pageItems.slice(i, i + 5).map((item) => new ButtonBuilder()
         .setCustomId(`config:open:${item.id}`)
         .setLabel(item.label)
-        .setStyle(item.id === 'remove_mc' ? ButtonStyle.Danger : ButtonStyle.Primary)),
+        .setStyle(['remove_mc', 'remove_database'].includes(item.id) ? ButtonStyle.Danger : ButtonStyle.Primary)),
     ));
   }
 
   return { embed, components, page: safePage, maxPage };
+}
+
+export function buildRemoveDatabaseComponents(targets, page = 0) {
+  const pageSize = 25;
+  const maxPage = Math.max(0, Math.ceil(targets.length / pageSize) - 1);
+  const safePage = Math.min(Math.max(Number(page) || 0, 0), maxPage);
+  const options = targets.slice(safePage * pageSize, (safePage + 1) * pageSize).map((target) => ({
+    label: target.name.slice(0, 100),
+    description: `${target.engine} • SSL ${target.sslEnabled ? 'on' : 'off'}`.slice(0, 100),
+    value: target.id,
+  }));
+  const rows = [];
+  if (maxPage > 0) {
+    rows.push(new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`config:remove_database_page:${safePage - 1}`).setLabel('PREV').setStyle(ButtonStyle.Secondary).setDisabled(safePage === 0),
+      new ButtonBuilder().setCustomId(`config:remove_database_page:${safePage + 1}`).setLabel('NEXT').setStyle(ButtonStyle.Secondary).setDisabled(safePage === maxPage),
+    ));
+  }
+  rows.push(new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(`config:remove_database:select:${safePage}`)
+      .setPlaceholder(`Select a database to remove (${safePage + 1}/${maxPage + 1})`)
+      .addOptions(options),
+  ));
+  rows.push(new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('config:back').setLabel('Back').setStyle(ButtonStyle.Secondary),
+  ));
+  return rows;
 }
 
 export function buildRemoveMinecraftComponents(servers, page = 0) {

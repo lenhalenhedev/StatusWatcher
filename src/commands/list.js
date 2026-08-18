@@ -2,6 +2,7 @@ import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { listTargets, getDailyUptime } from '../utils/uptimeTracker.js';
 import { getBotStates } from '../monitors/botMonitor.js';
 import { getMcStates } from '../monitors/mcMonitor.js';
+import { getDatabaseStates } from '../monitors/databaseMonitor.js';
 import { isMuted } from '../store/muteStore.js';
 import config from '../config.js';
 
@@ -13,8 +14,9 @@ export const data = new SlashCommandBuilder()
  * Resolve the live DOWN/UP status of a target from runtime state.
  * @returns {boolean|null} true=down, false=up, null=unknown
  */
-function resolveLiveDown(target, botStates, mcStates) {
+function resolveLiveDown(target, botStates, mcStates, databaseStates) {
   if (target.type === 'minecraft') return mcStates.get(target.id)?.isConfirmedDown ?? null;
+  if (target.type === 'database') return databaseStates.get(target.id)?.isConfirmedDown ?? null;
   const state = botStates.get(target.id);
   return state ? state.isConfirmedDown : null;
 }
@@ -29,9 +31,10 @@ export async function execute(interaction) {
 
   const botStates = getBotStates();
   const mcStates = getMcStates();
+  const databaseStates = getDatabaseStates();
 
   const lines = targets.map((t) => {
-    const down = resolveLiveDown(t, botStates, mcStates);
+    const down = resolveLiveDown(t, botStates, mcStates, databaseStates);
     const dot = t.status === 'archived' ? '⚪' : down === true ? '🔴' : down === false ? '🟢' : '⚫';
     const star = t.has_important_role ? ' ⭐' : '';
     const muted = isMuted(t.id) ? ' 🔇' : '';

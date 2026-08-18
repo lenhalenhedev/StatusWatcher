@@ -49,13 +49,34 @@ function downtimeMinutes(id, fallbackTs) {
   return start ? getElapsedMinutes(start) : 0;
 }
 
-export function buildStatusEmbed(botStates, mcStates, page = 0) {
+export function buildStatusEmbed(botStates, mcStates, page = 0, databaseStates = null) {
   const { currentPage, totalPages, bots } = getStatusPage(botStates, page);
   const embed = new EmbedBuilder()
     .setTitle('📊 System Status Monitor')
     .setColor(COLOR.INFO)
     .setFooter({ text: `Updated at: ${getTimestampUTC7()} (UTC+7)` })
     .setTimestamp();
+
+  // --- Database section ---
+  const databaseEntries = databaseStates instanceof Map ? [...databaseStates.values()] : [];
+  if (databaseEntries.length > 0) {
+    const databaseLines = databaseEntries.map((databaseState) => {
+      if (databaseState.isConfirmedDown) {
+        const min = downtimeMinutes(databaseState.id, databaseState.confirmedDownAt);
+        const errorText = String(databaseState.lastError ?? 'Database probe failed.').substring(0, 180);
+        return `🔴 **DOWN** — \`${databaseState.name}\` — \`${databaseState.engine}\` — Down for **${min} min**\nError: ${errorText}\n${buildUptimeLine(databaseState.id)}`;
+      }
+      if (databaseState.lastHealthyAt) {
+        return `🟢 **ONLINE** — \`${databaseState.name}\` — \`${databaseState.engine}\`\n${buildUptimeLine(databaseState.id)}`;
+      }
+      return `🟡 **CHECKING** — \`${databaseState.name}\` — \`${databaseState.engine}\``;
+    });
+    embed.addFields({
+      name: '🗄️ Databases',
+      value: databaseLines.join('\n\n').substring(0, FIELD_VALUE_LIMIT),
+      inline: false,
+    });
+  }
 
   // --- Minecraft Server section ---
   const mcEntries = mcStates instanceof Map
@@ -134,7 +155,9 @@ export function buildStatusEmbed(botStates, mcStates, page = 0) {
 
 /** Human label for a target type. */
 function typeLabel(type) {
-  return type === 'minecraft' ? 'Minecraft Server' : 'Server Bot';
+  if (type === 'minecraft') return 'Minecraft Server';
+  if (type === 'database') return 'Database';
+  return 'Server Bot';
 }
 
 /**

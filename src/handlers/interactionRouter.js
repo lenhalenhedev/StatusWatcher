@@ -30,6 +30,7 @@ function resolveComponentHandler(interaction, commandMap) {
  * @param {() => Map<string, object>} dependencies.getBotStates
  * @param {() => object} dependencies.getMcState
  * @param {() => Map<string, object>} dependencies.getMcStates
+ * @param {() => Map<string, object>} dependencies.getDatabaseStates
  * @param {(context: string, error: unknown) => unknown} [dependencies.reportError]
  * @returns {(interaction: import('discord.js').Interaction) => Promise<void>}
  */
@@ -39,6 +40,7 @@ export function createInteractionHandler({
   getBotStates,
   getMcState,
   getMcStates,
+  getDatabaseStates,
   reportError = logError,
 }) {
   return async function handleInteraction(interaction) {
@@ -66,7 +68,7 @@ export function createInteractionHandler({
         if (command) {
           await command.handleInteraction(interaction);
         } else {
-          await updateStatusComponent(interaction, { getBotStates, getMcStates, getMcState });
+          await updateStatusComponent(interaction, { getBotStates, getMcStates, getMcState, getDatabaseStates });
         }
         return;
       }

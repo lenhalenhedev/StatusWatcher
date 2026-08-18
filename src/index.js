@@ -6,6 +6,7 @@ import { printUptimeReport } from './utils/uptimeTracker.js';
 import { closeDatabase } from './utils/db.js';
 import { initBotMonitor, getBotStates, handleMemberAdd, handleMemberRemove } from './monitors/botMonitor.js';
 import { initMcMonitor, checkMcServers, getMcStates, getMcState } from './monitors/mcMonitor.js';
+import { initDatabaseMonitor, getDatabaseStates, checkDatabaseTargets, closeDatabaseMonitor } from './monitors/databaseMonitor.js';
 import { cleanLogChannel } from './handlers/notifier.js';
 import { postDailyDigest } from './handlers/digest.js';
 import { createCheckRunner } from './core/checkCycle.js';
@@ -16,6 +17,7 @@ import { commandMap } from './commands/index.js';
 import { refreshStatusMessage, updateStatusComponent } from './services/statusMessage.js';
 import { runBackgroundTask } from './utils/backgroundTask.js';
 import { createInteractionHandler } from './handlers/interactionRouter.js';
+import { handleCertificateMessage } from './commands/configCommand.js';
 
 /**
  * @typedef {Object} AppState
@@ -46,6 +48,8 @@ const client = new Client({
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildPresences,
     GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.DirectMessages,
+    GatewayIntentBits.MessageContent,
   ],
 });
 
@@ -63,6 +67,9 @@ client.on('guildMemberAdd', (member) => {
 });
 client.on('guildMemberRemove', (member) => {
   if (handleMemberRemove(member)) void refreshMonitorEmbed();
+});
+client.on('messageCreate', (message) => {
+  void handleCertificateMessage(message);
 });
 
 const runner = createCheckRunner({
@@ -112,6 +119,7 @@ function doRefresh() {
     getBotStates,
     getMcStates,
     getMcState,
+    getDatabaseStates,
   }).catch((err) => {
     logError('Index.refreshMonitorEmbed', err);
     return null;
@@ -142,6 +150,7 @@ subscribeRuntimeConfig(() => {
   restartCheckLoop();
   scheduleDailyDigest();
   initMcMonitor();
+  initDatabaseMonitor();
   if (state.monitoredGuild) refreshBotRoleFlags(state.monitoredGuild);
   void refreshMonitorEmbed();
 });
@@ -184,6 +193,15 @@ client.once('ready', async () => {
     }
   }
 
+  if (config.databaseEnabled) {
+    try {
+      initDatabaseMonitor();
+      await checkDatabaseTargets(state.isConnected);
+    } catch (err) {
+      logError('Index.ready.databaseMonitor', err);
+    }
+  }
+
   try {
     await initBotMonitor(state.monitoredGuild);
   } catch (err) {
@@ -197,6 +215,10 @@ client.once('ready', async () => {
       monitoredBots: getBotStates().size,
       ...(config.mcEnabled ? {
         minecraftOnline: [...getMcStates().values()].some((mcState) => !mcState.isConfirmedDown),
+      } : {}),
+      ...(config.databaseEnabled ? {
+        databasesOnline: [...getDatabaseStates().values()].filter((databaseState) => databaseState.lastHealthyAt).length,
+        databasesDown: [...getDatabaseStates().values()].filter((databaseState) => databaseState.isConfirmedDown).length,
       } : {}),
     }));
   } catch (err) {
@@ -245,6 +267,7 @@ const handleInteraction = createInteractionHandler({
   getBotStates,
   getMcStates,
   getMcState,
+  getDatabaseStates,
 });
 
 client.on('interactionCreate', (interaction) => {
@@ -292,6 +315,12 @@ async function shutdown(signal, exitCode = 0) {
       }
     } catch (err) {
       logError('Index.shutdown.healthServer', err);
+    }
+
+    try {
+      await closeDatabaseMonitor();
+    } catch (err) {
+      logError('Index.shutdown.databaseMonitor', err);
     }
 
     try {

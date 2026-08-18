@@ -1,6 +1,6 @@
 {
   "name": "discord-status-bot",
-  "version": "1.4.3",
+  "version": "1.5.3",
   "description": "Discord bot giám sát trạng thái Bot và Minecraft Server",
   "type": "module",
   "main": "src/index.js",
@@ -13,8 +13,12 @@
     "better-sqlite3": "^13.0.3",
     "discord.js": "^14.27.0",
     "dotenv": "^17.4.2",
+    "mongodb": "^7.5.0",
+    "mysql2": "^3.23.3",
     "node-cron": "^4.6.0",
-    "node-mcstatus": "^1.2.1"
+    "node-mcstatus": "^1.2.1",
+    "pg": "^8.23.0",
+    "redis": "^6.2.1"
   },
   "engines": {
     "node": ">=24.0.0"

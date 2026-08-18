@@ -2,6 +2,7 @@ import { SlashCommandBuilder } from 'discord.js';
 import { getStatusMessagePayload } from '../services/statusMessage.js';
 import { getBotStates } from '../monitors/botMonitor.js';
 import { getMcStates } from '../monitors/mcMonitor.js';
+import { getDatabaseStates } from '../monitors/databaseMonitor.js';
 
 export const data = new SlashCommandBuilder()
   .setName('status')
@@ -13,6 +14,6 @@ export const data = new SlashCommandBuilder()
 export async function execute(interaction) {
   await interaction.deferReply();
   await interaction.editReply({
-    ...getStatusMessagePayload(getBotStates(), getMcStates()),
+    ...getStatusMessagePayload(getBotStates(), getMcStates(), 0, getDatabaseStates()),
   });
 }

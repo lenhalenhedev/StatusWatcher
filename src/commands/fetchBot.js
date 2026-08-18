@@ -3,6 +3,7 @@ import config from '../config.js';
 import { fetchBotsInBatches } from '../services/botFetchService.js';
 import { getBotStates } from '../monitors/botMonitor.js';
 import { getMcState } from '../monitors/mcMonitor.js';
+import { getDatabaseStates } from '../monitors/databaseMonitor.js';
 import { refreshStatusMessage } from '../services/statusMessage.js';
 
 export const data = new SlashCommandBuilder()
@@ -38,6 +39,7 @@ export async function execute(interaction) {
       channelId: config.monitorChannelId,
       getBotStates,
       getMcState,
+      getDatabaseStates,
     });
 
     latestCount = result.fetchedBots;

@@ -6,6 +6,7 @@ import {
   listMinecraftServers,
   saveMinecraftServer,
 } from './store/runtimeConfigStore.js';
+import { listDatabaseTargets } from './store/databaseStore.js';
 import {
   parseRuntimeConfigValue,
   serializeRuntimeConfigValue,
@@ -92,6 +93,7 @@ function buildSnapshot() {
     port: server.port,
   }));
   const firstServer = servers[0] ?? null;
+  const databaseTargets = listDatabaseTargets();
   const checkIntervalSec = readValue(raw, 'checkIntervalSec', 30);
   const confirmDownThresholdSec = readValue(raw, 'confirmDownThresholdSec', 60);
   const displayLogSec = readValue(raw, 'checkIntervalDisplayLogSec', 90);
@@ -114,6 +116,9 @@ function buildSnapshot() {
     mcServerIp: firstServer?.host,
     mcServerPort: firstServer?.port,
     mcServerName: firstServer?.name,
+
+    databaseTargets,
+    databaseEnabled: databaseTargets.length > 0,
 
     checkInterval: checkIntervalSec * 1_000,
     confirmDownThresholdMs: confirmDownThresholdSec * 1_000,

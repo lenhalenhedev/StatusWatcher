@@ -5,9 +5,10 @@ import {
   registerTarget,
   recordDown,
   recordUp,
-  archiveTarget,
+  deleteTarget,
   getOpenSessionStart,
   getTarget,
+  listTargets,
 } from '../utils/uptimeTracker.js';
 
 /**
@@ -15,35 +16,41 @@ import {
  * {
  *   name: string,
  *   hasImportantRole: boolean,
- *   isConfirmedDown: boolean,             // true once the threshold has been crossed
- *   firstSeenOffline: number|null,        // epoch ms - first time detected offline
- *   confirmedDownAt: number|null,         // epoch ms - moment confirmed DOWN
- *   lastStillDownNotifiedAt: number|null, // epoch ms - last "Still DOWN" reminder
- *   stillDownRemindersSent: number,       // reminders sent during the current outage
+ *   isConfirmedDown: boolean,
+ *   firstSeenOffline: number|null,
+ *   confirmedDownAt: number|null,
+ *   lastStillDownNotifiedAt: number|null,
+ *   stillDownRemindersSent: number,
  * }
  */
 const botStates = new Map();
-
 const confirmDownThresholdSec = config.confirmDownThresholdMs / 1_000;
 
 /**
  * Whether a guild member is a bot we should monitor (excludes this monitor bot).
- * @param {import('discord.js').GuildMember} member
+ * This also accepts partial members received by guildMemberRemove.
+ * @param {import('discord.js').GuildMember|import('discord.js').PartialGuildMember} member
  * @returns {boolean}
  */
 function isMonitorableBot(member) {
-  return Boolean(member?.user?.bot) && member.id !== member.guild.client.user.id;
+  return Boolean(member?.user?.bot) && member.id !== config.clientId;
+}
+
+function memberHasImportantRole(member) {
+  return Boolean(member?.roles?.cache?.has?.(config.importantRoleId));
+}
+
+function memberName(member) {
+  return member?.user?.globalName || member?.user?.username || member?.displayName || member?.id || 'Unknown Bot';
 }
 
 /**
- * Create the initial runtime state for a bot and persist it as an active target.
- * A bot that is already offline at boot is treated as a known outage so it
- * shows as DOWN immediately and emits a reminder on the first cycle.
+ * Create the initial runtime state for a bot and persist its current metadata.
  * @param {import('discord.js').GuildMember} member
- * @returns {object} The created runtime state.
+ * @returns {object}
  */
-function createInitialState(member) {
-  const hasImportantRole = member.roles.cache.has(config.importantRoleId);
+function createInitialState(member, { persist = true } = {}) {
+  const hasImportantRole = memberHasImportantRole(member);
   const isOffline = !member.presence || member.presence.status === 'offline';
 
   const bootConfirmedDownAt = isOffline ? Date.now() : null;
@@ -52,7 +59,7 @@ function createInitialState(member) {
     : null;
 
   const state = {
-    name: member.user.username,
+    name: memberName(member),
     hasImportantRole,
     isConfirmedDown: Boolean(isOffline),
     firstSeenOffline: bootFirstSeenOffline,
@@ -62,34 +69,44 @@ function createInitialState(member) {
   };
 
   botStates.set(member.id, state);
-  registerTarget(member.id, member.user.username, { type: 'bot', hasImportantRole });
+  if (persist) registerTarget(member.id, state.name, { type: 'bot', hasImportantRole });
 
-  if (isOffline) {
-    recordDown(member.id, bootFirstSeenOffline);
-  }
-
+  if (isOffline) recordDown(member.id, bootFirstSeenOffline);
   return state;
 }
 
 /**
- * Scan every bot in the guild and establish the initial monitoring state.
- * Must be called after GuildMembers and GuildPresences have been fetched.
+ * Restore only active bot IDs stored in SQLite. Each ID is fetched individually
+ * so startup reconciles persistence without requesting the complete guild.
  * @param {import('discord.js').Guild} guild
  * @returns {Promise<Map<string, object>>}
  */
 export async function initBotMonitor(guild) {
-  const members = await guild.members.fetch();
+  botStates.clear();
+  const storedBots = listTargets({ activeOnly: true }).filter(target => target.type === 'bot');
 
-  for (const [, member] of members) {
-    if (!isMonitorableBot(member)) continue;
-    if (getTarget(member.id)?.status === 'archived') continue;
-    const state = createInitialState(member);
-    logInfo(
-      'BotMonitor',
-      `Registered: ${state.name} | ` +
-      `Status: ${member.presence?.status ?? 'offline'} | ` +
-      `Important: ${state.hasImportantRole}`,
-    );
+  for (const target of storedBots) {
+    try {
+      const member = await guild.members.fetch(target.id);
+      if (!isMonitorableBot(member)) {
+        deleteTarget(target.id);
+        continue;
+      }
+
+      const state = createInitialState(member);
+      logInfo(
+        'BotMonitor',
+        `Restored: ${state.name} | ` +
+        `Status: ${member.presence?.status ?? 'offline'} | ` +
+        `Important: ${state.hasImportantRole}`,
+      );
+    } catch (err) {
+      // A failed lookup is treated as no longer present. This also handles
+      // Discord's unknown-member response during startup reconciliation.
+      deleteTarget(target.id);
+      botStates.delete(target.id);
+      logInfo('BotMonitor', `Removed missing bot target from SQLite: ${target.name} (${target.id})`);
+    }
   }
 
   return botStates;
@@ -101,62 +118,88 @@ export function getBotStates() {
 }
 
 /**
- * Handle a member joining while the monitor is running.
+ * Register a bot received through the guildMemberAdd event or fetch command.
  * @param {import('discord.js').GuildMember} member
+ * @returns {boolean}
  */
-export function addBotToMonitor(member, { reactivateArchived = false } = {}) {
-  if (!isMonitorableBot(member) || botStates.has(member.id)) return false;
-  if (!reactivateArchived && getTarget(member.id)?.status === 'archived') return false;
+export function addBotToMonitor(member) {
+  if (!isMonitorableBot(member)) return false;
+
+  const existing = botStates.get(member.id);
+  if (existing) {
+    existing.name = memberName(member);
+    existing.hasImportantRole = memberHasImportantRole(member);
+    registerTarget(member.id, existing.name, { type: 'bot', hasImportantRole: existing.hasImportantRole });
+    return false;
+  }
+
   const state = createInitialState(member);
   logInfo('BotMonitor', `Bot added and registered: ${state.name}`);
   return true;
 }
 
+/**
+ * Load a member into the runtime map after its target row has already been
+ * persisted. Existing state is preserved so an in-progress outage is not reset.
+ * @param {import('discord.js').GuildMember} member
+ * @returns {boolean}
+ */
+export function hydrateBotState(member) {
+  if (!isMonitorableBot(member)) return false;
+  const existing = botStates.get(member.id);
+  if (existing) {
+    existing.name = memberName(member);
+    existing.hasImportantRole = memberHasImportantRole(member);
+    return false;
+  }
+  createInitialState(member, { persist: false });
+  return true;
+}
+
+/** Remove a bot from the in-memory monitor after its persistence row is deleted. */
+export function removeBotState(id) {
+  return botStates.delete(id);
+}
+
 export function handleMemberAdd(member) {
   try {
-    addBotToMonitor(member);
+    return addBotToMonitor(member);
   } catch (err) {
     logError('BotMonitor.handleMemberAdd', err);
+    return false;
   }
 }
 
 /**
- * Handle a member leaving / being kicked.
- * @param {import('discord.js').GuildMember | { id: string }} member
- */
-export function handleMemberRemove(member) {
-  try {
-    const id = member?.id;
-    if (!id || !botStates.has(id)) return;
-    stopMonitoring(id);
-  } catch (err) {
-    logError('BotMonitor.handleMemberRemove', err);
-  }
-}
-
-/**
- * Stop monitoring a target: close any open session, archive it (history kept)
- * and drop it from the active runtime map.
+ * Stop monitoring and physically delete a target from SQLite.
  * @param {string} id
  */
 function stopMonitoring(id) {
   const state = botStates.get(id);
-  const name = state?.name ?? id;
-  archiveTarget(id);
+  const target = getTarget(id);
+  const name = state?.name ?? target?.name ?? id;
   botStates.delete(id);
-  logInfo('BotMonitor', `Stopped monitoring (archived): ${name}`);
-}
-
-export function removeBotFromMonitor(id) {
-  if (!botStates.has(id)) return false;
-  stopMonitoring(id);
-  return true;
+  deleteTarget(id);
+  logInfo('BotMonitor', `Stopped monitoring and deleted target: ${name}`);
 }
 
 /**
- * Reset a bot's runtime state back to the healthy baseline.
- * @param {object} state
+ * Handle a member leaving / being kicked. The target is deleted even when it
+ * was restored in SQLite but not present in the current runtime map.
+ * @param {import('discord.js').GuildMember|{id: string}} member
  */
+export function handleMemberRemove(member) {
+  try {
+    const id = member?.id;
+    if (!id || (!botStates.has(id) && !getTarget(id))) return false;
+    stopMonitoring(id);
+    return true;
+  } catch (err) {
+    logError('BotMonitor.handleMemberRemove', err);
+    return false;
+  }
+}
+
 function resetState(state) {
   state.firstSeenOffline = null;
   state.isConfirmedDown = false;
@@ -166,11 +209,10 @@ function resetState(state) {
 }
 
 /**
- * Check the status of every monitored bot in a single cycle.
- * Returns the list of state-change events.
- *
+ * Check the presence of every monitored bot from the runtime member cache.
+ * No guild-wide member fetch occurs in the hot monitoring path.
  * @param {import('discord.js').Guild} guild
- * @param {boolean} isConnected - Whether the main bot is connected.
+ * @param {boolean} isConnected
  * @returns {Promise<Array<object>>}
  */
 export async function checkBotStatuses(guild, isConnected) {
@@ -181,30 +223,16 @@ export async function checkBotStatuses(guild, isConnected) {
 
   const events = [];
 
-  let members;
-  try {
-    members = await guild.members.fetch();
-  } catch (err) {
-    logError('BotMonitor.checkBotStatuses.fetch', err);
-    return events;
-  }
-
-  // Reconcile removed bots: any tracked id no longer present is archived.
-  for (const id of [...botStates.keys()]) {
-    if (!members.has(id)) stopMonitoring(id);
-  }
-
-  for (const [id, member] of members) {
+  for (const [id, state] of botStates) {
     try {
-      if (!isMonitorableBot(member)) continue;
-
-      let state = botStates.get(id);
-      if (!state) {
-        if (getTarget(id)?.status === 'archived') continue;
-        state = createInitialState(member);
-        logInfo('BotMonitor', `Auto-registered untracked bot: ${state.name}`);
+      const member = guild?.members?.cache?.get(id);
+      if (!member) {
+        logInfo('BotMonitor', `Skipping ${id} - member is not in the runtime cache.`);
+        continue;
       }
 
+      state.name = memberName(member);
+      state.hasImportantRole = memberHasImportantRole(member);
       const isCurrentlyOffline = !member.presence || member.presence.status === 'offline';
 
       if (isCurrentlyOffline) {
@@ -216,8 +244,6 @@ export async function checkBotStatuses(guild, isConnected) {
           if (elapsedSec >= confirmDownThresholdSec) {
             state.isConfirmedDown = true;
             state.confirmedDownAt = Date.now();
-            // Seed the reminder clock and counter so the first "Still DOWN"
-            // reminder waits a full backoff step after the initial DOWN alert.
             state.lastStillDownNotifiedAt = state.confirmedDownAt;
             state.stillDownRemindersSent = 0;
             recordDown(id, state.firstSeenOffline);
@@ -226,19 +252,16 @@ export async function checkBotStatuses(guild, isConnected) {
             logInfo('BotMonitor', `${state.name} confirmed DOWN after ${elapsedSec}s.`);
           }
         } else {
-          // Already confirmed DOWN -> report Still DOWN using the persisted start.
           const downSince = getOpenSessionStart(id) ?? state.confirmedDownAt;
           events.push({ type: 'STILL_DOWN', botId: id, state, downSince });
         }
       } else if (state.isConfirmedDown) {
-        // Recovery: DOWN -> UP. Capture the real downtime start before closing it.
         const downSince = getOpenSessionStart(id) ?? state.confirmedDownAt;
         recordUp(id);
         events.push({ type: 'UP', botId: id, state, downSince });
         resetState(state);
         logInfo('BotMonitor', `${state.name} recovered UP.`);
       } else {
-        // Healthy and online: clear any pending offline timer.
         resetState(state);
       }
     } catch (err) {

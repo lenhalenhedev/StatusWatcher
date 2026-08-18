@@ -18,7 +18,14 @@ export function clampStatusPage(page, totalPages) {
 }
 
 export function getStatusPage(botStates, page) {
-  const bots = [...(botStates?.entries?.() ?? [])];
+  const bots = [...(botStates?.entries?.() ?? [])]
+    .map((entry, index) => ({ entry, index }))
+    .sort((left, right) => {
+      const leftImportant = left.entry[1]?.hasImportantRole ? 1 : 0;
+      const rightImportant = right.entry[1]?.hasImportantRole ? 1 : 0;
+      return rightImportant - leftImportant || left.index - right.index;
+    })
+    .map(({ entry }) => entry);
   const totalPages = getStatusPageCount(botStates);
   const currentPage = clampStatusPage(page, totalPages);
   const start = currentPage * STATUS_PAGE_SIZE;

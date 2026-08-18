@@ -57,8 +57,12 @@ client.on('shardResume', () => {
   logInfo('Gateway', 'Shard resumed.');
 });
 
-client.on('guildMemberAdd', (member) => handleMemberAdd(member));
-client.on('guildMemberRemove', (member) => handleMemberRemove(member));
+client.on('guildMemberAdd', (member) => {
+  if (handleMemberAdd(member)) void refreshMonitorEmbed();
+});
+client.on('guildMemberRemove', (member) => {
+  if (handleMemberRemove(member)) void refreshMonitorEmbed();
+});
 
 const runner = createCheckRunner({
   client,

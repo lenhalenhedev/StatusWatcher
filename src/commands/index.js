@@ -7,8 +7,7 @@ import * as mute from './mute.js';
 import * as unmute from './unmute.js';
 import * as subscribe from './subscribe.js';
 import * as resendEmbed from './resendEmbed.js';
-import * as addBot from './addBot.js';
-import * as removeBot from './removeBot.js';
+import * as fetchBot from './fetchBot.js';
 
 /**
  * Every slash command module. Each exports `data` (a SlashCommandBuilder) and
@@ -24,8 +23,7 @@ export const commandModules = [
   unmute,
   subscribe,
   resendEmbed,
-  addBot,
-  removeBot,
+  fetchBot,
 ];
 
 /** Lookup map keyed by command name for fast dispatch. */

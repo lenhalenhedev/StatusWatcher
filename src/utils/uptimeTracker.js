@@ -25,6 +25,9 @@ const stmtGetTarget   = db.prepare(`SELECT * FROM targets WHERE id = ?`);
 const stmtListTargets = db.prepare(`SELECT * FROM targets ORDER BY type, name`);
 const stmtListActive  = db.prepare(`SELECT * FROM targets WHERE status = 'active' ORDER BY type, name`);
 const stmtSetStatus   = db.prepare(`UPDATE targets SET status = @status, updated_at = @now WHERE id = @id`);
+const stmtDeleteMute   = db.prepare(`DELETE FROM mutes WHERE target_id = ?`);
+const stmtDeleteSubs   = db.prepare(`DELETE FROM subscriptions WHERE target_id = ?`);
+const stmtDeleteTarget = db.prepare(`DELETE FROM targets WHERE id = ?`);
 
 const stmtOpenSession = db.prepare(`
   SELECT * FROM downtime_sessions
@@ -167,6 +170,25 @@ export function archiveTarget(id, timestamp = Date.now()) {
     stmtSetStatus.run({ id, status: 'archived', now: timestamp });
   } catch (err) {
     logError('UptimeTracker.archiveTarget', err);
+  }
+}
+
+/**
+ * Permanently remove a target and its target-scoped metadata. SQLite foreign
+ * keys cascade the dependent downtime sessions, so a departed bot is absent
+ * from both active monitoring and the database as requested.
+ * @param {string} id
+ */
+export function deleteTarget(id) {
+  try {
+    const transaction = db.transaction(() => {
+      stmtDeleteMute.run(id);
+      stmtDeleteSubs.run(id);
+      stmtDeleteTarget.run(id);
+    });
+    transaction();
+  } catch (err) {
+    logError('UptimeTracker.deleteTarget', err);
   }
 }
 

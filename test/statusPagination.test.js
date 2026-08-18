@@ -14,6 +14,24 @@ function makeStates(count) {
   ]));
 }
 
+test('prioritizes important-role bots before ordinary bots across pages', () => {
+  const states = new Map([
+    ['ordinary-1', { name: 'Ordinary 1', hasImportantRole: false }],
+    ...Array.from({ length: 11 }, (_, index) => [
+      `important-${index + 1}`,
+      { name: `Important ${index + 1}`, hasImportantRole: true },
+    ]),
+  ]);
+
+  const firstPage = getStatusPage(states, 0);
+  const secondPage = getStatusPage(states, 1);
+
+  assert.equal(firstPage.bots.length, 10);
+  assert.equal(firstPage.bots[0][0], 'important-1');
+  assert.equal(firstPage.bots.every(([, state]) => state.hasImportantRole), true);
+  assert.equal(secondPage.bots[0][0], 'important-11');
+});
+
 test('paginates bots in groups of ten and always exposes at least one page', () => {
   assert.equal(getStatusPageCount(makeStates(0)), 1);
   assert.equal(getStatusPageCount(makeStates(10)), 1);

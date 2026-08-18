@@ -24,7 +24,6 @@ import {
  * }
  */
 const botStates = new Map();
-const confirmDownThresholdSec = config.confirmDownThresholdMs / 1_000;
 
 /**
  * Whether a guild member is a bot we should monitor (excludes this monitor bot).
@@ -161,6 +160,16 @@ export function removeBotState(id) {
   return botStates.delete(id);
 }
 
+/** Re-read important-role membership from cached members after runtime config changes. */
+export function refreshBotRoleFlags(guild) {
+  for (const [id, state] of botStates) {
+    const member = guild?.members?.cache?.get(id);
+    if (!member) continue;
+    state.hasImportantRole = memberHasImportantRole(member);
+    registerTarget(id, state.name, { type: 'bot', hasImportantRole: state.hasImportantRole });
+  }
+}
+
 export function handleMemberAdd(member) {
   try {
     return addBotToMonitor(member);
@@ -238,10 +247,10 @@ export async function checkBotStatuses(guild, isConnected) {
       if (isCurrentlyOffline) {
         if (state.firstSeenOffline === null) {
           state.firstSeenOffline = Date.now();
-          logInfo('BotMonitor', `${state.name} offline - starting ${confirmDownThresholdSec}s threshold...`);
+            logInfo('BotMonitor', `${state.name} offline - starting ${config.confirmDownThresholdMs / 1_000}s threshold...`);
         } else if (!state.isConfirmedDown) {
           const elapsedSec = getElapsedSeconds(state.firstSeenOffline);
-          if (elapsedSec >= confirmDownThresholdSec) {
+          if (elapsedSec >= config.confirmDownThresholdMs / 1_000) {
             state.isConfirmedDown = true;
             state.confirmedDownAt = Date.now();
             state.lastStillDownNotifiedAt = state.confirmedDownAt;

@@ -29,6 +29,7 @@ function resolveComponentHandler(interaction, commandMap) {
  * @param {(interaction: import('discord.js').Interaction, deps: object) => Promise<unknown>} dependencies.updateStatusComponent
  * @param {() => Map<string, object>} dependencies.getBotStates
  * @param {() => object} dependencies.getMcState
+ * @param {() => Map<string, object>} dependencies.getMcStates
  * @param {(context: string, error: unknown) => unknown} [dependencies.reportError]
  * @returns {(interaction: import('discord.js').Interaction) => Promise<void>}
  */
@@ -37,6 +38,7 @@ export function createInteractionHandler({
   updateStatusComponent,
   getBotStates,
   getMcState,
+  getMcStates,
   reportError = logError,
 }) {
   return async function handleInteraction(interaction) {
@@ -44,6 +46,12 @@ export function createInteractionHandler({
       if (interaction.isAutocomplete()) {
         const command = commandMap.get(interaction.commandName);
         if (command?.autocomplete) await command.autocomplete(interaction);
+        return;
+      }
+
+      if (interaction.isModalSubmit?.()) {
+        const command = resolveComponentHandler(interaction, commandMap);
+        if (command) await command.handleInteraction(interaction);
         return;
       }
 
@@ -58,7 +66,7 @@ export function createInteractionHandler({
         if (command) {
           await command.handleInteraction(interaction);
         } else {
-          await updateStatusComponent(interaction, { getBotStates, getMcState });
+          await updateStatusComponent(interaction, { getBotStates, getMcStates, getMcState });
         }
         return;
       }

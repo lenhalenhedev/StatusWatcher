@@ -1,7 +1,7 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { getStatusMessagePayload } from '../services/statusMessage.js';
 import { getBotStates } from '../monitors/botMonitor.js';
-import { getMcState } from '../monitors/mcMonitor.js';
+import { getMcStates } from '../monitors/mcMonitor.js';
 
 export const data = new SlashCommandBuilder()
   .setName('status')
@@ -13,6 +13,6 @@ export const data = new SlashCommandBuilder()
 export async function execute(interaction) {
   await interaction.deferReply();
   await interaction.editReply({
-    ...getStatusMessagePayload(getBotStates(), getMcState()),
+    ...getStatusMessagePayload(getBotStates(), getMcStates()),
   });
 }

@@ -3,106 +3,144 @@ import { logInfo } from '../utils/logger.js';
 import { registerTarget, recordDown, recordUp, getOpenSessionStart } from '../utils/uptimeTracker.js';
 import { fetchMcStatus } from '../services/mcStatusClient.js';
 
+// Kept for compatibility with legacy consumers; new servers receive their own
+// stable ID from the minecraft_servers SQLite table.
 export const MC_TARGET_ID = 'minecraft_server';
 
-// Minecraft server state (module-level singleton).
-const mcState = {
-  isConfirmedDown: false,
-  firstSeenOffline: null,         // epoch ms
-  confirmedDownAt: null,          // epoch ms
-  lastStillDownNotifiedAt: null,  // epoch ms
-  stillDownRemindersSent: 0,      // reminders sent during the current outage
-  lastPingData: null,             // { players, maxPlayers, version } when online
-  lastError: null,                // most recent error message
-};
+const mcStates = new Map();
 
-export function getMcState() {
-  return mcState;
+function newState(server) {
+  return {
+    id: server.id,
+    name: server.name,
+    host: server.host,
+    port: server.port,
+    isConfirmedDown: false,
+    firstSeenOffline: null,
+    confirmedDownAt: null,
+    lastStillDownNotifiedAt: null,
+    stillDownRemindersSent: 0,
+    lastPingData: null,
+    lastError: null,
+  };
 }
 
-/** Register the MC server in the uptime tracker. */
+function stateFor(server) {
+  let state = mcStates.get(server.id);
+  if (!state) {
+    state = newState(server);
+    mcStates.set(server.id, state);
+  } else {
+    state.name = server.name;
+    state.host = server.host;
+    state.port = server.port;
+  }
+  return state;
+}
+
+export function getMcStates() {
+  return mcStates;
+}
+
+/** Legacy single-state accessor; returns the first configured server. */
+export function getMcState(id = null) {
+  if (id) return mcStates.get(id) ?? null;
+  return mcStates.values().next().value ?? null;
+}
+
+export function removeMcState(id) {
+  return mcStates.delete(id);
+}
+
+/** Register/update all configured Minecraft targets and remove stale runtime state. */
 export function initMcMonitor() {
-  if (!config.mcEnabled) return;
-  registerTarget(MC_TARGET_ID, config.mcServerName, { type: 'minecraft' });
+  const activeIds = new Set(config.mcServers.map((server) => server.id));
+  for (const id of mcStates.keys()) {
+    if (!activeIds.has(id)) mcStates.delete(id);
+  }
+
+  for (const server of config.mcServers) {
+    registerTarget(server.id, server.name, { type: 'minecraft' });
+    stateFor(server);
+  }
 }
 
-/**
- * Check the Minecraft server once and return a state-change event.
- *
- * Service failures from mcstatus.io (network/HTTP) are retried with backoff by
- * the status client and, if still failing, are treated as "unknown" (type:null)
- * rather than a server outage, so a flaky network never triggers a false DOWN.
- *
- * @param {boolean} isConnected
- * @returns {Promise<{ type: 'ONLINE'|'DOWN'|'STILL_DOWN'|'UP'|null, error?: string, downSince?: number }>}
- */
-export async function checkMcServer(isConnected) {
-  if (!config.mcEnabled || !isConnected) return { type: null };
+async function checkOne(server, isConnected) {
+  const state = stateFor(server);
+  if (!isConnected) return { server, state, event: { type: null } };
 
   const status = await fetchMcStatus({
-    ip: config.mcServerIp,
-    port: config.mcServerPort,
+    ip: server.host,
+    port: server.port,
     maxRetries: config.mcMaxRetries,
     baseDelayMs: config.mcRetryBaseMs,
     timeoutMs: config.mcStatusTimeoutMs,
   });
 
-  // Service failure: keep the previous state to avoid false alarms.
   if (!status.ok) {
-    mcState.lastError = `mcstatus.io unavailable: ${status.error}`;
-    return { type: null };
+    state.lastError = `mcstatus.io unavailable: ${status.error}`;
+    return { server, state, event: { type: null } };
   }
 
   if (status.online) {
-    mcState.lastPingData = status.data;
-    mcState.lastError = null;
+    state.lastPingData = status.data;
+    state.lastError = null;
 
-    if (mcState.isConfirmedDown) {
-      const downSince = getOpenSessionStart(MC_TARGET_ID) ?? mcState.confirmedDownAt;
-      recordUp(MC_TARGET_ID);
-      mcState.isConfirmedDown = false;
-      mcState.firstSeenOffline = null;
-      mcState.confirmedDownAt = null;
-      mcState.lastStillDownNotifiedAt = null;
-      mcState.stillDownRemindersSent = 0;
-      logInfo('McMonitor', 'Minecraft Server recovered to UP.');
-      return { type: 'UP', downSince };
+    if (state.isConfirmedDown) {
+      const downSince = getOpenSessionStart(server.id) ?? state.confirmedDownAt;
+      recordUp(server.id);
+      state.isConfirmedDown = false;
+      state.firstSeenOffline = null;
+      state.confirmedDownAt = null;
+      state.lastStillDownNotifiedAt = null;
+      state.stillDownRemindersSent = 0;
+      logInfo('McMonitor', `${server.name} recovered to UP.`);
+      return { server, state, event: { type: 'UP', downSince } };
     }
 
-    mcState.firstSeenOffline = null;
-    return { type: 'ONLINE' };
+    state.firstSeenOffline = null;
+    return { server, state, event: { type: 'ONLINE' } };
   }
 
-  // Server is genuinely offline.
-  mcState.lastPingData = null;
-  mcState.lastError = 'Server offline (reported by mcstatus.io)';
-
-  if (mcState.firstSeenOffline === null) {
-    mcState.firstSeenOffline = Date.now();
-    const thresholdSec = config.confirmDownThresholdMs / 1_000;
-    logInfo('McMonitor', `Server reported offline - starting ${thresholdSec}s threshold...`);
+  state.lastPingData = null;
+  state.lastError = 'Server offline (reported by mcstatus.io)';
+  if (state.firstSeenOffline === null) {
+    state.firstSeenOffline = Date.now();
+    logInfo('McMonitor', `${server.name} offline - starting ${config.confirmDownThresholdMs / 1_000}s threshold...`);
   }
 
-  const elapsed = Date.now() - mcState.firstSeenOffline;
-
-  if (!mcState.isConfirmedDown && elapsed >= config.confirmDownThresholdMs) {
-    mcState.isConfirmedDown = true;
-    mcState.confirmedDownAt = Date.now();
-    // Seed the reminder clock/counter so the first "Still DOWN" reminder waits
-    // a full backoff step after the initial DOWN alert.
-    mcState.lastStillDownNotifiedAt = mcState.confirmedDownAt;
-    mcState.stillDownRemindersSent = 0;
-    recordDown(MC_TARGET_ID, mcState.firstSeenOffline);
-    const downSince = getOpenSessionStart(MC_TARGET_ID) ?? mcState.confirmedDownAt;
-    logInfo('McMonitor', `Minecraft Server confirmed DOWN after ${Math.floor(elapsed / 1_000)}s.`);
-    return { type: 'DOWN', error: mcState.lastError, downSince };
+  const elapsed = Date.now() - state.firstSeenOffline;
+  if (!state.isConfirmedDown && elapsed >= config.confirmDownThresholdMs) {
+    state.isConfirmedDown = true;
+    state.confirmedDownAt = Date.now();
+    state.lastStillDownNotifiedAt = state.confirmedDownAt;
+    state.stillDownRemindersSent = 0;
+    recordDown(server.id, state.firstSeenOffline);
+    const downSince = getOpenSessionStart(server.id) ?? state.confirmedDownAt;
+    logInfo('McMonitor', `${server.name} confirmed DOWN after ${Math.floor(elapsed / 1_000)}s.`);
+    return { server, state, event: { type: 'DOWN', error: state.lastError, downSince } };
   }
 
-  if (mcState.isConfirmedDown) {
-    const downSince = getOpenSessionStart(MC_TARGET_ID) ?? mcState.confirmedDownAt;
-    return { type: 'STILL_DOWN', error: mcState.lastError, downSince };
+  if (state.isConfirmedDown) {
+    const downSince = getOpenSessionStart(server.id) ?? state.confirmedDownAt;
+    return { server, state, event: { type: 'STILL_DOWN', error: state.lastError, downSince } };
   }
 
-  // Below threshold -> stay silent, keep counting.
-  return { type: null };
+  return { server, state, event: { type: null } };
+}
+
+/** Check every configured server once. */
+export async function checkMcServers(isConnected) {
+  if (!config.mcEnabled || !isConnected) return [];
+  initMcMonitor();
+  const results = [];
+  for (const server of config.mcServers) {
+    results.push(await checkOne(server, isConnected));
+  }
+  return results;
+}
+
+/** Legacy single-server wrapper used by older callers and tests. */
+export async function checkMcServer(isConnected) {
+  return (await checkMcServers(isConnected))[0]?.event ?? { type: null };
 }

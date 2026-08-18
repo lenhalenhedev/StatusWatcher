@@ -13,6 +13,7 @@ import {
  * @param {string} channelId
  */
 async function fetchTextChannel(client, channelId) {
+  if (!channelId) return null;
   try {
     const ch = await client.channels.fetch(channelId);
     return ch?.isTextBased() ? ch : null;
@@ -123,6 +124,7 @@ export async function notifyUpBatch(client, items) {
  * @param {number} limit
  */
 async function cleanOwnMessages(client, channelId, limit) {
+  if (!channelId) return;
   const ch = await fetchTextChannel(client, channelId);
   if (!ch) return;
 

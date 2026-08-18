@@ -8,31 +8,23 @@ const validEnv = {
   TOKEN: 'token',
   CLIENT_ID: '123456789012345678',
   GUILD_ID: '123456789012345678',
-  MONITOR_CHANNEL_ID: '123456789012345678',
-  LOG_CHANNEL_ID: '123456789012345678',
-  MC_SERVER_IP: '127.0.0.1',
-  MC_SERVER_PORT: '25565',
-  MC_SERVER_NAME: 'test-server',
-  IMPORTANT_ROLE_ID: '123456789012345678',
   ADMIN_USER_ID: '123456789012345678',
-  CHECK_INTERVAL: '30',
 };
 
 function buildEnv(overrides = {}) {
-  const env = { ...process.env, ...validEnv };
+  const env = {
+    ...process.env,
+    ...validEnv,
+    DB_PATH: path.join(
+      '/tmp',
+      `statuswatcher-config-test-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.db`,
+    ),
+  };
   for (const [key, value] of Object.entries(overrides)) {
     if (value === undefined) delete env[key];
     else env[key] = value;
   }
   return env;
-}
-
-function loadConfig(overrides = {}) {
-  return execFileSync(
-    process.execPath,
-    ['--input-type=module', '-e', "import('./src/config.js')"],
-    { cwd, env: buildEnv(overrides) },
-  );
 }
 
 function loadConfigSnapshot(overrides = {}) {
@@ -47,52 +39,60 @@ function loadConfigSnapshot(overrides = {}) {
   ));
 }
 
-test('rejects a non-numeric Minecraft port', () => {
-  assert.throws(
-    () => loadConfig({ MC_SERVER_PORT: '25565oops' }),
-    (error) => error.status === 1,
-  );
+test('boots without operational environment values before /config is used', () => {
+  const config = loadConfigSnapshot();
+  assert.equal(config.mcEnabled, false);
+  assert.deepEqual(config.mcServers, []);
+  assert.equal(config.monitorChannelId, null);
+  assert.equal(config.logChannelId, null);
 });
 
-test('rejects a non-positive check interval', () => {
-  assert.throws(
-    () => loadConfig({ CHECK_INTERVAL: '0' }),
-    (error) => error.status === 1,
-  );
-});
-
-test('accepts valid operational values', () => {
-  assert.doesNotThrow(() => loadConfig({ MC_STATUS_TIMEOUT_MS: '2500', MC_MAX_RETRIES: '0' }));
-});
-
-test('defaults MC_ENABLE to true for backward compatibility', () => {
-  const config = loadConfigSnapshot({ MC_ENABLE: undefined });
-  assert.equal(config.mcEnabled, true);
-});
-
-test('accepts MC_ENABLE=false without Minecraft connection settings', () => {
+test('MC_ENABLE=false keeps legacy Minecraft migration disabled', () => {
   const config = loadConfigSnapshot({
-    MC_ENABLE: ' false ',
-    MC_SERVER_IP: undefined,
-    MC_SERVER_PORT: undefined,
-    MC_SERVER_NAME: undefined,
+    MC_ENABLE: 'false',
+    MC_SERVER_IP: '127.0.0.1',
+    MC_SERVER_PORT: '25565',
+    MC_SERVER_NAME: 'legacy-server',
   });
   assert.equal(config.mcEnabled, false);
-  assert.equal('mcServerIp' in config, false);
-  assert.equal('mcServerPort' in config, false);
-  assert.equal('mcServerName' in config, false);
+  assert.deepEqual(config.mcServers, []);
 });
 
-test('rejects an invalid MC_ENABLE value', () => {
-  assert.throws(
-    () => loadConfig({ MC_ENABLE: 'yes' }),
-    (error) => error.status === 1,
-  );
+test('legacy MC_ENABLE=true can migrate a valid old Minecraft tuple once', () => {
+  const config = loadConfigSnapshot({
+    MC_ENABLE: 'true',
+    MC_SERVER_IP: '127.0.0.1',
+    MC_SERVER_PORT: '25565',
+    MC_SERVER_NAME: 'legacy-server',
+  });
+  assert.equal(config.mcEnabled, true);
+  assert.equal(config.mcServers.length, 1);
+  assert.equal(config.mcServers[0].name, 'legacy-server');
+  assert.equal(config.mcServers[0].host, '127.0.0.1');
+  assert.equal(config.mcServers[0].port, 25565);
 });
 
-test('rejects an empty MC_ENABLE value', () => {
-  assert.throws(
-    () => loadConfig({ MC_ENABLE: '  ' }),
-    (error) => error.status === 1,
-  );
+test('invalid legacy Minecraft tuple is ignored instead of becoming runtime config', () => {
+  const config = loadConfigSnapshot({
+    MC_ENABLE: 'true',
+    MC_SERVER_IP: '127.0.0.1',
+    MC_SERVER_PORT: 'not-a-port',
+    MC_SERVER_NAME: 'legacy-server',
+  });
+  assert.equal(config.mcEnabled, false);
+  assert.deepEqual(config.mcServers, []);
 });
+
+test('operational defaults are available until values are saved through /config', () => {
+  const config = loadConfigSnapshot();
+  assert.equal(config.checkInterval, 30_000);
+  assert.equal(config.confirmDownThresholdMs, 60_000);
+  assert.equal(config.mcRetryBaseMs, 500);
+  assert.equal(config.mcMaxRetries, 3);
+  assert.equal(config.mcStatusTimeoutMs, 10_000);
+  assert.equal(config.dailyDigestCron, '0 1 * * *');
+});
+
+// Values written through /config are validated by runtimeConfigSchema.test.js;
+// SQLite-backed integration tests remain environment-dependent because this
+// sandbox's better-sqlite3 native binary segfaults under Node 22.

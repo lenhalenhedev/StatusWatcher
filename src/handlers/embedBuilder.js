@@ -7,7 +7,6 @@ import {
   getYearlyUptime,
   getOpenSessionStart,
 } from '../utils/uptimeTracker.js';
-import { MC_TARGET_ID } from '../monitors/mcMonitor.js';
 import config from '../config.js';
 import { getStatusPage } from './statusPagination.js';
 
@@ -50,7 +49,7 @@ function downtimeMinutes(id, fallbackTs) {
   return start ? getElapsedMinutes(start) : 0;
 }
 
-export function buildStatusEmbed(botStates, mcState, page = 0) {
+export function buildStatusEmbed(botStates, mcStates, page = 0) {
   const { currentPage, totalPages, bots } = getStatusPage(botStates, page);
   const embed = new EmbedBuilder()
     .setTitle('📊 System Status Monitor')
@@ -59,28 +58,29 @@ export function buildStatusEmbed(botStates, mcState, page = 0) {
     .setTimestamp();
 
   // --- Minecraft Server section ---
-  if (config.mcEnabled) {
-    let mcField = '🟡 **Checking...**';
-
-    if (mcState.isConfirmedDown) {
-      const min = downtimeMinutes(MC_TARGET_ID, mcState.confirmedDownAt);
-      const errorText = String(mcState.lastError ?? 'Unknown connection error').substring(0, 500);
-      mcField =
-        `🔴 **DOWN** — Down for **${min} min**\n` +
-        `\`\`Error: ${errorText}\`\`\n` +
-        `${buildUptimeLine(MC_TARGET_ID)}`;
-    } else if (mcState.lastPingData) {
-      const players = mcState.lastPingData.players ?? 0;
-      const maxPlayers = mcState.lastPingData.maxPlayers ?? 0;
-      mcField =
-        `🟢 **ONLINE** — \`${config.mcServerName}\`\n` +
-        `Players: **${players}/${maxPlayers}**\n` +
-        `${buildUptimeLine(MC_TARGET_ID)}`;
+  const mcEntries = mcStates instanceof Map
+    ? [...mcStates.values()]
+    : (mcStates ? [mcStates] : []);
+  if (config.mcEnabled && mcEntries.length > 0) {
+    const mcLines = [];
+    for (const mcState of mcEntries) {
+      let line = `🟡 **CHECKING** — \`${mcState.name}\``;
+      if (mcState.isConfirmedDown) {
+        const min = downtimeMinutes(mcState.id, mcState.confirmedDownAt);
+        const errorText = String(mcState.lastError ?? 'Unknown connection error').substring(0, 300);
+        line = `🔴 **DOWN** — \`${mcState.name}\` — Down for **${min} min**\n` +
+          `Error: ${errorText}\n${buildUptimeLine(mcState.id)}`;
+      } else if (mcState.lastPingData) {
+        const players = mcState.lastPingData.players ?? 0;
+        const maxPlayers = mcState.lastPingData.maxPlayers ?? 0;
+        line = `🟢 **ONLINE** — \`${mcState.name}\`\n` +
+          `Players: **${players}/${maxPlayers}**\n${buildUptimeLine(mcState.id)}`;
+      }
+      mcLines.push(line);
     }
-
     embed.addFields({
-      name: '🎮 Minecraft Server',
-      value: String(mcField).substring(0, FIELD_VALUE_LIMIT),
+      name: '🎮 Minecraft Servers',
+      value: mcLines.join('\n\n').substring(0, FIELD_VALUE_LIMIT),
       inline: false,
     });
   }

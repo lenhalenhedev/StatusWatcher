@@ -16,16 +16,17 @@ function enqueue(operation) {
   return next;
 }
 
-function buildStatusPayload(botStates, mcState, page) {
+function buildStatusPayload(botStates, mcStates, page) {
   const totalPages = getStatusPageCount(botStates);
   const currentPage = Math.min(Math.max(page, 0), totalPages - 1);
   return {
-    embeds: [buildStatusEmbed(botStates, mcState, currentPage)],
+    embeds: [buildStatusEmbed(botStates, mcStates, currentPage)],
     components: buildStatusComponents(currentPage, totalPages),
   };
 }
 
 async function fetchMonitorChannel(client, channelId) {
+  if (!channelId) return null;
   const channel = await client.channels.fetch(channelId);
   return channel?.isTextBased() ? channel : null;
 }
@@ -42,12 +43,13 @@ async function fetchTrackedMessage(channel, channelId) {
   }
 }
 
-export function refreshStatusMessage(client, { channelId, getBotStates, getMcState, forceNew = false }) {
+export function refreshStatusMessage(client, { channelId, getBotStates, getMcStates, getMcState, forceNew = false }) {
   return enqueue(async () => {
     const channel = await fetchMonitorChannel(client, channelId);
     if (!channel) return null;
 
-    const payload = buildStatusPayload(getBotStates(), getMcState(), forceNew ? 0 : currentMonitorPage);
+    const mcStates = getMcStates ? getMcStates() : getMcState?.();
+    const payload = buildStatusPayload(getBotStates(), mcStates, forceNew ? 0 : currentMonitorPage);
     let message = forceNew ? null : await fetchTrackedMessage(channel, channelId);
 
     if (forceNew) {
@@ -69,7 +71,7 @@ export function refreshStatusMessage(client, { channelId, getBotStates, getMcSta
   });
 }
 
-export function updateStatusComponent(interaction, { getBotStates, getMcState }) {
+export function updateStatusComponent(interaction, { getBotStates, getMcStates, getMcState }) {
   return enqueue(async () => {
     const parsed = parseStatusComponentId(interaction.customId);
     if (!parsed) {
@@ -98,7 +100,8 @@ export function updateStatusComponent(interaction, { getBotStates, getMcState })
     }
 
     currentMonitorPage = nextPage;
-    await interaction.update(buildStatusPayload(getBotStates(), getMcState(), nextPage));
+    const mcStates = getMcStates ? getMcStates() : getMcState?.();
+    await interaction.update(buildStatusPayload(getBotStates(), mcStates, nextPage));
     return true;
   });
 }

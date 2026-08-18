@@ -1,11 +1,11 @@
 import { ActivityType, Client, GatewayIntentBits } from 'discord.js';
 import cron from 'node-cron';
-import config from './config.js';
+import config, { subscribeRuntimeConfig } from './config.js';
 import { logError, logInfo } from './utils/logger.js';
 import { printUptimeReport } from './utils/uptimeTracker.js';
 import { closeDatabase } from './utils/db.js';
 import { initBotMonitor, getBotStates, handleMemberAdd, handleMemberRemove } from './monitors/botMonitor.js';
-import { initMcMonitor, checkMcServer, getMcState } from './monitors/mcMonitor.js';
+import { initMcMonitor, checkMcServers, getMcStates, getMcState } from './monitors/mcMonitor.js';
 import { cleanLogChannel } from './handlers/notifier.js';
 import { postDailyDigest } from './handlers/digest.js';
 import { createCheckRunner } from './core/checkCycle.js';
@@ -35,6 +35,7 @@ const state = {
 
 /** @type {import('node-cron').ScheduledTask[]} */
 const cronJobs = [];
+let dailyDigestJob = null;
 const bootTime = Date.now();
 
 const SHUTDOWN_TIMEOUT_MS = 5_000;
@@ -109,12 +110,41 @@ function doRefresh() {
   return refreshStatusMessage(client, {
     channelId: config.monitorChannelId,
     getBotStates,
+    getMcStates,
     getMcState,
   }).catch((err) => {
     logError('Index.refreshMonitorEmbed', err);
     return null;
   });
 }
+
+function restartCheckLoop() {
+  if (state.checkLoopHandle) clearInterval(state.checkLoopHandle);
+  state.checkLoopHandle = setInterval(() => {
+    void runBackgroundTask('Index.checkCycle', () => runner.run());
+  }, config.checkInterval);
+}
+
+function scheduleDailyDigest() {
+  if (dailyDigestJob) dailyDigestJob.stop();
+  if (!cron.validate(config.dailyDigestCron)) {
+    logError('Index.cron', new Error(`Invalid DAILY_DIGEST_CRON: ${config.dailyDigestCron}`));
+    dailyDigestJob = null;
+    return;
+  }
+  dailyDigestJob = cron.schedule(config.dailyDigestCron, () => {
+    void runBackgroundTask('Index.dailyDigest', () => postDailyDigest(client));
+  });
+}
+
+subscribeRuntimeConfig(() => {
+  if (!state.isConnected) return;
+  restartCheckLoop();
+  scheduleDailyDigest();
+  initMcMonitor();
+  if (state.monitoredGuild) refreshBotRoleFlags(state.monitoredGuild);
+  void refreshMonitorEmbed();
+});
 
 // ---------------------------------------------------------------------------
 // Startup sequence
@@ -148,7 +178,7 @@ client.once('ready', async () => {
   if (config.mcEnabled) {
     try {
       initMcMonitor();
-      await checkMcServer(state.isConnected);
+      await checkMcServers(state.isConnected);
     } catch (err) {
       logError('Index.ready.mcMonitor', err);
     }
@@ -165,7 +195,9 @@ client.once('ready', async () => {
       connected: state.isConnected,
       uptimeSec: Math.floor((Date.now() - bootTime) / 1_000),
       monitoredBots: getBotStates().size,
-      ...(config.mcEnabled ? { minecraftOnline: !getMcState().isConfirmedDown } : {}),
+      ...(config.mcEnabled ? {
+        minecraftOnline: [...getMcStates().values()].some((mcState) => !mcState.isConfirmedDown),
+      } : {}),
     }));
   } catch (err) {
     logError('Index.ready.healthServer', err);
@@ -173,9 +205,7 @@ client.once('ready', async () => {
 
   // Core monitoring loop can start as soon as the subsystems above are up,
   // regardless of whether the non-critical background tasks below succeed.
-  state.checkLoopHandle = setInterval(() => {
-    void runBackgroundTask('Index.checkCycle', () => runner.run());
-  }, config.checkInterval);
+  restartCheckLoop();
 
   cronJobs.push(cron.schedule('0 17 * * *', () => {
     void runBackgroundTask('Index.uptimeReport', () => printUptimeReport());
@@ -184,13 +214,7 @@ client.once('ready', async () => {
     void runBackgroundTask('Index.refreshMonitorEmbed', () => refreshMonitorEmbed());
   }));
 
-  if (cron.validate(config.dailyDigestCron)) {
-    cronJobs.push(cron.schedule(config.dailyDigestCron, () => {
-      void runBackgroundTask('Index.dailyDigest', () => postDailyDigest(client));
-    }));
-  } else {
-    logError('Index.cron', new Error(`Invalid DAILY_DIGEST_CRON: ${config.dailyDigestCron}`));
-  }
+  scheduleDailyDigest();
 
   logInfo('Index', 'Startup complete. Monitoring is active.');
 
@@ -219,6 +243,7 @@ const handleInteraction = createInteractionHandler({
   commandMap,
   updateStatusComponent,
   getBotStates,
+  getMcStates,
   getMcState,
 });
 
@@ -257,6 +282,7 @@ async function shutdown(signal, exitCode = 0) {
     // 1. Stop timers and cron jobs immediately - no new work should start.
     if (state.checkLoopHandle) clearInterval(state.checkLoopHandle);
     cronJobs.forEach((job) => job.stop());
+    if (dailyDigestJob) dailyDigestJob.stop();
 
     // 2. Close connections, each isolated so one failure doesn't block others.
     try {

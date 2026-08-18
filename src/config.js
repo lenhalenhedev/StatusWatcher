@@ -1,44 +1,16 @@
 import 'dotenv/config';
+import cron from 'node-cron';
+import {
+  listRuntimeConfig,
+  seedRuntimeConfig,
+  listMinecraftServers,
+  saveMinecraftServer,
+} from './store/runtimeConfigStore.js';
+import {
+  parseRuntimeConfigValue,
+  serializeRuntimeConfigValue,
+} from './config/runtimeConfigSchema.js';
 
-function boolEnv(key, fallback) {
-  const raw = process.env[key];
-  if (raw === undefined) return fallback;
-
-  const normalized = raw.trim().toLowerCase();
-  if (normalized === 'true') return true;
-  if (normalized === 'false') return false;
-
-  console.error(`[CONFIG FATAL] ${key} must be true or false.`);
-  process.exit(1);
-  return fallback;
-}
-
-const mcEnabled = boolEnv('MC_ENABLE', true);
-
-// Required environment variables. Missing one should fail fast.
-const REQUIRED_VARS = [
-  'TOKEN', 'CLIENT_ID', 'GUILD_ID',
-  'MONITOR_CHANNEL_ID', 'LOG_CHANNEL_ID',
-  'IMPORTANT_ROLE_ID', 'ADMIN_USER_ID',
-  'CHECK_INTERVAL',
-];
-
-if (mcEnabled) {
-  REQUIRED_VARS.push('MC_SERVER_IP', 'MC_SERVER_PORT', 'MC_SERVER_NAME');
-}
-
-for (const key of REQUIRED_VARS) {
-  if (!process.env[key]) {
-    console.error(`[CONFIG FATAL] Missing required env var: ${key}`);
-    process.exit(1);
-  }
-}
-
-/**
- * Parse an integer environment variable without accepting partial values such as
- * `25565oops`. Invalid configured values fail fast rather than silently changing
- * the bot’s timing or network behavior.
- */
 function intEnv(key, fallback, { min = 0, max = Number.MAX_SAFE_INTEGER } = {}) {
   const raw = process.env[key];
   if (raw === undefined || raw === '') return fallback;
@@ -59,54 +31,125 @@ function intEnv(key, fallback, { min = 0, max = Number.MAX_SAFE_INTEGER } = {}) 
   return parsed;
 }
 
-// Seconds a target must be continuously offline before being confirmed DOWN.
-const confirmDownThresholdSec = intEnv('CONFIRM_DOWN_THRESHOLD', 60, { min: 1 });
+const legacyMcEnabled = String(process.env.MC_ENABLE ?? 'true').trim().toLowerCase() !== 'false';
 
-// First "Still DOWN" reminder step. Kept for backward compatibility with the
-// original CHECK_INTERVAL_DISPLAY_LOG variable.
+// Only bootstrap credentials remain mandatory at process start. Operational
+// settings are intentionally allowed to be empty until /config stores them.
+for (const key of ['TOKEN', 'CLIENT_ID', 'GUILD_ID', 'ADMIN_USER_ID']) {
+  if (!process.env[key]) {
+    console.error(`[CONFIG FATAL] Missing required env var: ${key}`);
+    process.exit(1);
+  }
+}
+
 const firstBackoffStepSec = intEnv('CHECK_INTERVAL_DISPLAY_LOG', 90, { min: 1 });
-
-// Escalating "Still DOWN" backoff steps (seconds). STILL_DOWN_BACKOFF, when set,
-// fully overrides the default schedule (e.g. "90,300,1800").
-const backoffStepsSec = process.env.STILL_DOWN_BACKOFF
-  ? process.env.STILL_DOWN_BACKOFF.split(',')
-      .map((s) => parseInt(s.trim(), 10))
-      .filter((n) => Number.isFinite(n) && n > 0)
-  : [];
-const resolvedBackoffSec = backoffStepsSec.length > 0
-  ? backoffStepsSec
+const envBackoff = process.env.STILL_DOWN_BACKOFF
+  ? process.env.STILL_DOWN_BACKOFF.split(',').map((s) => Number(s.trim()))
   : [firstBackoffStepSec, 300, 1_800];
+if (envBackoff.some((value) => !Number.isSafeInteger(value) || value < 1)) {
+  console.error('[CONFIG FATAL] STILL_DOWN_BACKOFF must contain positive integers.');
+  process.exit(1);
+}
 
-export default Object.freeze({
-  mcEnabled,
-  token:            process.env.TOKEN,
-  clientId:         process.env.CLIENT_ID,
-  guildId:          process.env.GUILD_ID,
+const envRuntimeDefaults = {
+  importantRoleId: process.env.IMPORTANT_ROLE_ID,
   monitorChannelId: process.env.MONITOR_CHANNEL_ID,
-  logChannelId:     process.env.LOG_CHANNEL_ID,
-  mcServerIp:       mcEnabled ? process.env.MC_SERVER_IP : undefined,
-  mcServerPort:     mcEnabled ? intEnv('MC_SERVER_PORT', 25565, { min: 1, max: 65_535 }) : undefined,
-  mcServerName:     mcEnabled ? process.env.MC_SERVER_NAME : undefined,
-  importantRoleId:  process.env.IMPORTANT_ROLE_ID,
-  adminUserId:      process.env.ADMIN_USER_ID,
-
-  // Active check interval (ms).
-  checkInterval: intEnv('CHECK_INTERVAL', 30, { min: 1 }) * 1_000,
-
-  // Must be offline continuously for this long before being confirmed DOWN.
-  confirmDownThresholdMs: confirmDownThresholdSec * 1_000,
-
-  // Escalating "Still DOWN" reminder schedule (ms).
-  stillDownBackoffStepsMs: resolvedBackoffSec.map((s) => s * 1_000),
-
-  // mcstatus.io retry policy.
-  mcMaxRetries: intEnv('MC_MAX_RETRIES', 3, { min: 0 }),
-  mcRetryBaseMs: intEnv('MC_RETRY_BASE_MS', 500, { min: 0 }),
-  mcStatusTimeoutMs: intEnv('MC_STATUS_TIMEOUT_MS', 10_000, { min: 0 }),
-
-  // HTTP health-check server port (0 disables it).
-  healthPort: intEnv('HEALTH_PORT', 3000, { min: 0, max: 65_535 }),
-
-  // Cron expression for the daily uptime digest (default 08:00 UTC+7 = 01:00 UTC).
+  logChannelId: process.env.LOG_CHANNEL_ID,
+  checkIntervalSec: process.env.CHECK_INTERVAL || '30',
+  confirmDownThresholdSec: process.env.CONFIRM_DOWN_THRESHOLD || '60',
+  checkIntervalDisplayLogSec: process.env.CHECK_INTERVAL_DISPLAY_LOG || '90',
+  stillDownBackoffSec: envBackoff.join(','),
+  mcRetryBaseMs: process.env.MC_RETRY_BASE_MS || '500',
+  mcMaxRetries: process.env.MC_MAX_RETRIES || '3',
+  mcStatusTimeoutMs: process.env.MC_STATUS_TIMEOUT_MS || '10000',
   dailyDigestCron: process.env.DAILY_DIGEST_CRON || '0 1 * * *',
-});
+};
+
+seedRuntimeConfig(envRuntimeDefaults);
+
+// One-time migration for the former single Minecraft environment tuple. The
+// new source of truth is minecraft_servers; MC_ENABLE is not consulted again.
+if (legacyMcEnabled && listMinecraftServers().length === 0) {
+  const host = process.env.MC_SERVER_IP;
+  const port = process.env.MC_SERVER_PORT ? Number(process.env.MC_SERVER_PORT) : 25565;
+  const name = process.env.MC_SERVER_NAME;
+  if (host && name && Number.isInteger(port) && port >= 1 && port <= 65_535) {
+    saveMinecraftServer({ id: 'minecraft_server', name, host, port });
+  }
+}
+
+function readValue(raw, key, fallback) {
+  if (raw[key] === undefined) return fallback;
+  return parseRuntimeConfigValue(key, raw[key]);
+}
+
+function buildSnapshot() {
+  const raw = listRuntimeConfig();
+  const servers = listMinecraftServers().map((server) => ({
+    id: server.id,
+    name: server.name,
+    host: server.host,
+    port: server.port,
+  }));
+  const firstServer = servers[0] ?? null;
+  const checkIntervalSec = readValue(raw, 'checkIntervalSec', 30);
+  const confirmDownThresholdSec = readValue(raw, 'confirmDownThresholdSec', 60);
+  const displayLogSec = readValue(raw, 'checkIntervalDisplayLogSec', 90);
+  const backoffSec = readValue(raw, 'stillDownBackoffSec', [displayLogSec, 300, 1_800]);
+
+  return {
+    // Bootstrap values are stable for the life of the process.
+    token: process.env.TOKEN,
+    clientId: process.env.CLIENT_ID,
+    guildId: process.env.GUILD_ID,
+    adminUserId: process.env.ADMIN_USER_ID,
+    healthPort: intEnv('HEALTH_PORT', 3000, { min: 0, max: 65_535 }),
+
+    monitorChannelId: readValue(raw, 'monitorChannelId', null),
+    logChannelId: readValue(raw, 'logChannelId', null),
+    importantRoleId: readValue(raw, 'importantRoleId', null),
+
+    mcServers: servers,
+    mcEnabled: servers.length > 0,
+    mcServerIp: firstServer?.host,
+    mcServerPort: firstServer?.port,
+    mcServerName: firstServer?.name,
+
+    checkInterval: checkIntervalSec * 1_000,
+    confirmDownThresholdMs: confirmDownThresholdSec * 1_000,
+    checkIntervalDisplayLogSec: displayLogSec,
+    stillDownBackoffStepsMs: backoffSec.map((seconds) => seconds * 1_000),
+    mcMaxRetries: readValue(raw, 'mcMaxRetries', 3),
+    mcRetryBaseMs: readValue(raw, 'mcRetryBaseMs', 500),
+    mcStatusTimeoutMs: readValue(raw, 'mcStatusTimeoutMs', 10_000),
+    dailyDigestCron: readValue(raw, 'dailyDigestCron', '0 1 * * *'),
+  };
+}
+
+export const config = buildSnapshot();
+const runtimeConfigListeners = new Set();
+
+export function subscribeRuntimeConfig(listener) {
+  if (typeof listener !== 'function') throw new TypeError('Runtime config listener must be a function.');
+  runtimeConfigListeners.add(listener);
+  return () => runtimeConfigListeners.delete(listener);
+}
+
+/** Reload all mutable settings from SQLite into the shared runtime object. */
+export function reloadRuntimeConfig() {
+  const next = buildSnapshot();
+  Object.assign(config, next);
+  for (const listener of runtimeConfigListeners) {
+    try {
+      listener(config);
+    } catch (err) {
+      console.error('[CONFIG] Runtime config listener failed:', err);
+    }
+  }
+  return config;
+}
+
+/** Serialize a validated value before writing it to runtime_config. */
+export { serializeRuntimeConfigValue };
+
+export default config;

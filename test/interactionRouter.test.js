@@ -69,3 +69,36 @@ test('routes unclaimed buttons to the status component handler', async () => {
 
   assert.equal(updated, true);
 });
+
+test('routes config buttons, selects and modals to the config handler', async () => {
+  const routed = [];
+  const configCommand = {
+    handlesInteraction: (interaction) => String(interaction.customId).startsWith('config:'),
+    handleInteraction: async (interaction) => routed.push(interaction.customId),
+  };
+  const handler = createInteractionHandler({
+    commandMap: new Map([['config', configCommand]]),
+    updateStatusComponent: async () => { throw new Error('should not route config component to status'); },
+    getBotStates: () => new Map(),
+    getMcState: () => ({}),
+  });
+
+  await handler(baseInteraction({
+    customId: 'config:open:add_mc',
+    isButton: () => true,
+  }));
+  await handler(baseInteraction({
+    customId: 'config:remove_mc:select:0',
+    isStringSelectMenu: () => true,
+  }));
+  await handler(baseInteraction({
+    customId: 'config:modal:monitorChannelId',
+    isModalSubmit: () => true,
+  }));
+
+  assert.deepEqual(routed, [
+    'config:open:add_mc',
+    'config:remove_mc:select:0',
+    'config:modal:monitorChannelId',
+  ]);
+});

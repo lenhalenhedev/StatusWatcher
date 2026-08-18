@@ -42,12 +42,21 @@ function toGuildMember(guild, rawMember) {
 }
 
 async function fetchMemberPage(guild, after) {
-  return guild.client.rest.get(guildMembersRoute(guild.id), {
-    query: {
+  // discord.js exposes the supported paginated member-list endpoint publicly.
+  // Prefer it over a hand-built REST request so `after` and `limit` are encoded
+  // exactly as Discord expects.
+  if (typeof guild.members?.list === 'function') {
+    return guild.members.list({
       limit: MEMBER_PAGE_SIZE,
       ...(after ? { after } : {}),
-    },
-  });
+    });
+  }
+
+  // Keep a small test/compatibility fallback for guild-like objects that only
+  // expose the REST client. REST requires URLSearchParams for query values.
+  const query = new URLSearchParams({ limit: String(MEMBER_PAGE_SIZE) });
+  if (after) query.set('after', after);
+  return guild.client.rest.get(guildMembersRoute(guild.id), { query });
 }
 
 async function fetchMemberObjects(guild, rawBatch) {

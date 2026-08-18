@@ -1,6 +1,6 @@
 {
   "name": "discord-status-bot",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "description": "Discord bot giám sát trạng thái Bot và Minecraft Server",
   "type": "module",
   "main": "src/index.js",

@@ -117,14 +117,13 @@ test('/fetch-bot processes bot records in batches of ten and reports cumulative 
   const guild = {
     id: process.env.GUILD_ID,
     client: { user: { id: process.env.CLIENT_ID } },
-    members: { cache: { get: () => undefined } },
-  };
-  const rest = {
-    async get() {
-      return pages.shift();
+    members: {
+      cache: { get: () => undefined },
+      async list() {
+        return pages.shift();
+      },
     },
   };
-  guild.client.rest = rest;
 
   const result = await fetchService.fetchBotsInBatches(guild, {
     sleep: async ms => sleeps.push(ms),

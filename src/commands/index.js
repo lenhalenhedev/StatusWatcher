@@ -11,6 +11,7 @@ import * as fetchBot from './fetchBot.js';
 import * as configCommand from './configCommand.js';
 import * as checkTls from './checkTls.js';
 import * as checkDns from './checkDns.js';
+import * as whois from './whois.js';
 
 /**
  * Every slash command module. Each exports `data` (a SlashCommandBuilder) and
@@ -30,6 +31,7 @@ export const commandModules = [
   configCommand,
   checkTls,
   checkDns,
+  whois,
 ];
 
 /** Lookup map keyed by command name for fast dispatch. */

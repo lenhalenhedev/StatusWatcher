@@ -1,6 +1,6 @@
 {
   "name": "discord-status-bot",
-  "version": "1.6.5",
+  "version": "1.7.5",
   "description": "Discord bot for monitoring Bot and Minecraft Server status",
   "type": "module",
   "main": "src/index.js",
@@ -19,7 +19,8 @@
     "node-cron": "^4.6.0",
     "node-mcstatus": "^1.2.1",
     "pg": "^8.23.0",
-    "redis": "^6.2.1"
+    "redis": "^6.2.1",
+    "whois": "2.16.2"
   },
   "engines": {
     "node": ">=24.0.0"

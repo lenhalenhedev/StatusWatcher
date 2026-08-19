@@ -5,6 +5,32 @@ function valueOrFallback(value) {
   return text || 'Unavailable';
 }
 
+function safeEmbedText(value) {
+  return String(value ?? '')
+    .replace(/[\r\n\u0000-\u001f\u007f]/g, ' ')
+    .replace(/[`*_~|<>]/g, '')
+    .replace(/@/g, '＠')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const WHOIS_FIELD_LABELS = Object.freeze({
+  domainName: 'Domain Name',
+  registryDomainId: 'Registry Domain ID',
+  registrar: 'Registrar',
+  registrarIanaId: 'Registrar IANA ID',
+  registrarUrl: 'Registrar URL',
+  whoisServer: 'WHOIS Server',
+  creationDate: 'Creation Date',
+  updatedDate: 'Updated Date',
+  registryExpiryDate: 'Registry Expiry Date',
+  registrarRegistrationExpirationDate: 'Registrar Registration Expiration Date',
+  domainStatus: 'Domain Status',
+  nameServer: 'Name Server',
+  dnssec: 'DNSSEC',
+  registrantCountry: 'Registrant Country',
+});
+
 export function buildTlsCheckEmbed(domain, port, result) {
   const embed = new EmbedBuilder()
     .setTitle(`TLS Certificate — ${domain}:${port}`)
@@ -24,6 +50,27 @@ export function buildTlsCheckEmbed(domain, port, result) {
     );
   if (!result.authorized) embed.addFields({ name: 'Authorization', value: 'The certificate chain could not be authorized.', inline: false });
   return embed;
+}
+
+export function buildWhoisEmbed(domain, result) {
+  const fields = Object.entries(result ?? {})
+    .filter(([key]) => Object.hasOwn(WHOIS_FIELD_LABELS, key))
+    .map(([key, value]) => {
+      const values = Array.isArray(value) ? value : [value];
+      const normalized = values.map(safeEmbedText).filter(Boolean).join('\n').slice(0, 1024);
+      return {
+        name: WHOIS_FIELD_LABELS[key],
+        value: normalized || 'Unavailable',
+        inline: key !== 'domainStatus' && key !== 'nameServer',
+      };
+    })
+    .slice(0, 25);
+  if (fields.length === 0) fields.push({ name: 'Result', value: 'No useful WHOIS fields were returned.', inline: false });
+  return new EmbedBuilder()
+    .setTitle(`WHOIS Lookup — ${safeEmbedText(domain).slice(0, 253)}`)
+    .setColor(0x5865f2)
+    .setTimestamp()
+    .addFields(fields);
 }
 
 export function buildDnsCheckEmbed(domain, result) {
@@ -57,6 +104,9 @@ export function diagnosticErrorMessage(error) {
     case 'CERTIFICATE_INVALID': return 'The server certificate contains invalid validity data.';
     case 'CERTIFICATE_AUTHORIZATION_FAILED': return 'The certificate chain could not be authorized.';
     case 'DNS_RESPONSE_INVALID': return 'The DNS server returned an invalid response.';
+    case 'WHOIS_TIMEOUT': return 'The WHOIS lookup timed out.';
+    case 'WHOIS_RESPONSE_INVALID': return 'The WHOIS response was invalid.';
+    case 'WHOIS_LOOKUP_FAILED': return 'The WHOIS lookup failed. Review the bot logs for a safe diagnostic category.';
     default: return 'The check failed. Review the bot logs for a safe diagnostic category.';
   }
 }

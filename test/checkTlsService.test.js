@@ -123,7 +123,7 @@ test('maps DNS resolution failures without exposing resolver details', async () 
   );
 });
 
-test('pins the selected public address through the TLS lookup callback', async () => {
+test('uses the Node.js 20+ lookup callback array shape while pinning the selected public address', async () => {
   const socket = new FakeSocket(validCertificate());
   let tlsOptions;
   const pending = checkTlsCertificate('example.com', {
@@ -131,8 +131,8 @@ test('pins the selected public address through the TLS lookup callback', async (
     connect: (options) => { tlsOptions = options; return socket; },
   });
   await new Promise((resolve) => setImmediate(resolve));
-  const callbackResult = await new Promise((resolve, reject) => tlsOptions.lookup('example.com', {}, (error, address, family) => error ? reject(error) : resolve({ address, family })));
-  assert.deepEqual(callbackResult, { address: '93.184.216.34', family: 4 });
+  const callbackResult = await new Promise((resolve, reject) => tlsOptions.lookup('example.com', {}, (error, addresses) => error ? reject(error) : resolve(addresses)));
+  assert.deepEqual(callbackResult, [{ address: '93.184.216.34', family: 4 }]);
   socket.emit('secureConnect');
   await pending;
 });

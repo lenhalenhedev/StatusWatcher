@@ -126,7 +126,7 @@ export async function checkTlsCertificate(domain, {
         port,
         servername: domain,
         rejectUnauthorized: false,
-        lookup: (_hostname, _options, callback) => callback(null, selectedAddress.address, selectedAddress.family),
+        lookup: (_hostname, _options, callback) => callback(null, [{ address: selectedAddress.address, family: selectedAddress.family }]),
       });
       socket.once?.('secureConnect', succeed);
       socket.once?.('error', fail);

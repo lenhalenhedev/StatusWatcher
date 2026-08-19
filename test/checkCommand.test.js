@@ -95,6 +95,36 @@ test('maps network failures to safe user-facing messages without raw exception t
   assert.doesNotMatch(testInteraction.edits[0].content, /secret|password/i);
 });
 
+test('logs only a safe TLS diagnostic category and never raw service error text', async () => {
+  const testInteraction = interaction({ domain: 'example.com' });
+  const reports = [];
+  await checkTls.execute(testInteraction, {
+    checkTlsCertificate: async () => {
+      const error = new Error('password=secret endpoint=example.com');
+      error.code = 'TLS_HANDSHAKE_FAILED';
+      throw error;
+    },
+    reportError: async (context, message) => reports.push({ context, message }),
+  });
+  assert.deepEqual(reports, [{ context: 'CheckTls.execute', message: 'category=TLS_HANDSHAKE_FAILED' }]);
+  assert.doesNotMatch(reports[0].message, /secret|password|example\.com/i);
+  assert.equal(testInteraction.edits[0].content, 'The check failed. Review the bot logs for a safe diagnostic category.');
+});
+
+test('normalizes unexpected diagnostic codes to UNKNOWN before logging', async () => {
+  const testInteraction = interaction({ domain: 'example.com' });
+  const reports = [];
+  await checkTls.execute(testInteraction, {
+    checkTlsCertificate: async () => {
+      const error = new Error('attacker-controlled details');
+      error.code = 'bad code\nwith details';
+      throw error;
+    },
+    reportError: async (_context, message) => reports.push(message),
+  });
+  assert.deepEqual(reports, ['category=UNKNOWN']);
+});
+
 test('renders bounded TLS and DNS embeds with English labels and no raw errors', () => {
   const tlsEmbed = buildTlsCheckEmbed('example.com', 443, tlsResult).toJSON();
   const dnsEmbed = buildDnsCheckEmbed('example.com', { type: 'A', nameserver: '1.1.1.1', answers: ['93.184.216.34'], answerCount: 1 }).toJSON();

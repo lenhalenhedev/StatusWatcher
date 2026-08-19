@@ -12,10 +12,10 @@ export const CONFIG_PAGE_SIZE = 23;
 export const CONFIG_NAV_PAGE_SIZE = 20;
 
 export const CONFIG_ITEMS = Object.freeze([
-  { id: 'add_mc', label: 'Add MC', description: 'Thêm một Minecraft server bằng tên và host:port.' },
-  { id: 'remove_mc', label: 'Remove MC', description: 'Mở dropdown để xóa một Minecraft server đang lưu.' },
-  { id: 'add_database', label: 'Add Database', description: 'Thêm PostgreSQL, MySQL/MariaDB, Redis hoặc MongoDB bằng connect string.' },
-  { id: 'remove_database', label: 'Remove Database', description: 'Mở dropdown để xóa một database đang được theo dõi.' },
+  { id: 'add_mc', label: 'Add MC', description: 'Add a Minecraft server by name and host:port.' },
+  { id: 'remove_mc', label: 'Remove MC', description: 'Open a dropdown to remove a saved Minecraft server.' },
+  { id: 'add_database', label: 'Add Database', description: 'Add PostgreSQL, MySQL/MariaDB, Redis, or MongoDB with a connection string.' },
+  { id: 'remove_database', label: 'Remove Database', description: 'Open a dropdown to remove a monitored database.' },
   ...Object.entries(RUNTIME_CONFIG_DEFINITIONS).map(([id, definition]) => ({
     id,
     label: definition.label,
@@ -49,8 +49,8 @@ export function buildConfigEmbed(page = 0) {
     .setTitle('Runtime Configuration')
     .setColor(0x5865f2)
     .setDescription(
-      'Các giá trị dưới đây được lưu trong SQLite và áp dụng ngay sau khi lưu. '
-      + 'Add/Remove MC quản lý danh sách Minecraft server; các thông số khác điều khiển monitoring, alert, digest và thứ tự uptime embed.',
+      'The values below are stored in SQLite and applied immediately after saving. '
+      + 'Add/Remove MC manages Minecraft servers; the other settings control monitoring, alerts, digests, and uptime-embed ordering.',
     )
     .setFooter({ text: `Config page ${safePage + 1}/${maxPage + 1} • SQLite-backed` });
 

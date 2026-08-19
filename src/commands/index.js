@@ -9,6 +9,8 @@ import * as subscribe from './subscribe.js';
 import * as resendEmbed from './resendEmbed.js';
 import * as fetchBot from './fetchBot.js';
 import * as configCommand from './configCommand.js';
+import * as checkTls from './checkTls.js';
+import * as checkDns from './checkDns.js';
 
 /**
  * Every slash command module. Each exports `data` (a SlashCommandBuilder) and
@@ -26,6 +28,8 @@ export const commandModules = [
   resendEmbed,
   fetchBot,
   configCommand,
+  checkTls,
+  checkDns,
 ];
 
 /** Lookup map keyed by command name for fast dispatch. */

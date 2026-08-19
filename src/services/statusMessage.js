@@ -1,3 +1,4 @@
+import { MessageFlags } from 'discord.js';
 import { buildStatusEmbed } from '../handlers/embedBuilder.js';
 import {
   buildStatusComponents,
@@ -76,7 +77,7 @@ export function updateStatusComponent(interaction, { getBotStates, getMcStates, 
   return enqueue(async () => {
     const parsed = parseStatusComponentId(interaction.customId);
     if (!parsed) {
-      await interaction.reply({ content: 'error: This status control is no longer active.', ephemeral: true });
+      await interaction.reply({ content: 'error: This status control is no longer active.', flags: MessageFlags.Ephemeral });
       return true;
     }
 
@@ -88,15 +89,15 @@ export function updateStatusComponent(interaction, { getBotStates, getMcStates, 
     if (parsed.action === 'next') nextPage += 1;
 
     if (parsed.action === 'page') {
-      await interaction.reply({ content: 'error: Page indicator is disabled', ephemeral: true });
+      await interaction.reply({ content: 'error: Page indicator is disabled', flags: MessageFlags.Ephemeral });
       return true;
     }
     if (nextPage < 0) {
-      await interaction.reply({ content: 'error: No previous page exists', ephemeral: true });
+      await interaction.reply({ content: 'error: No previous page exists', flags: MessageFlags.Ephemeral });
       return true;
     }
     if (nextPage >= totalPages) {
-      await interaction.reply({ content: 'error: No Next page exists', ephemeral: true });
+      await interaction.reply({ content: 'error: No Next page exists', flags: MessageFlags.Ephemeral });
       return true;
     }
 

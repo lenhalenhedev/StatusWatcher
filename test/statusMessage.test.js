@@ -3,15 +3,23 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { MessageFlags } from 'discord.js';
 
 process.env.DB_PATH = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'statuswatcher-')), 'uptime.db');
-for (const key of [
-  'TOKEN', 'CLIENT_ID', 'GUILD_ID', 'MONITOR_CHANNEL_ID', 'LOG_CHANNEL_ID',
-  'MC_SERVER_IP', 'MC_SERVER_PORT', 'MC_SERVER_NAME', 'IMPORTANT_ROLE_ID',
-  'ADMIN_USER_ID', 'CHECK_INTERVAL',
-]) process.env[key] ??= 'test-value';
+const testIds = {
+  CLIENT_ID: '12345678901234567',
+  GUILD_ID: '12345678901234568',
+  MONITOR_CHANNEL_ID: '12345678901234569',
+  LOG_CHANNEL_ID: '12345678901234570',
+  IMPORTANT_ROLE_ID: '12345678901234571',
+  ADMIN_USER_ID: '12345678901234572',
+};
+process.env.TOKEN ??= 'test-token';
+for (const [key, value] of Object.entries(testIds)) process.env[key] ??= value;
+process.env.MC_SERVER_IP ??= '127.0.0.1';
 process.env.MC_SERVER_PORT = '25565';
-process.env.CHECK_INTERVAL = '30000';
+process.env.MC_SERVER_NAME ??= 'Test Minecraft';
+process.env.CHECK_INTERVAL = '30';
 
 const {
   updateStatusComponent,
@@ -78,7 +86,7 @@ test('returns the exact ephemeral error for an invalid previous page', async () 
 
   assert.deepEqual(currentInteraction.replyPayload, {
     content: 'error: No previous page exists',
-    ephemeral: true,
+    flags: MessageFlags.Ephemeral,
   });
 });
 

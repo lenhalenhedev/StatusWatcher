@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder, MessageFlags } from 'discord.js';
 import { resolveTarget, buildTargetChoices } from './targetUtils.js';
 import { getRecentSessions } from '../utils/uptimeTracker.js';
 import { getTimestampUTC7 } from '../utils/timeUtils.js';
@@ -28,7 +28,7 @@ export async function execute(interaction) {
   const target = resolveTarget(query);
 
   if (!target) {
-    await interaction.reply({ content: `No target found matching "${query}".`, ephemeral: true });
+    await interaction.reply({ content: `No target found matching "${query}".`, flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -36,7 +36,7 @@ export async function execute(interaction) {
   if (sessions.length === 0) {
     await interaction.reply({
       content: `No downtime has been recorded for **${target.name}** yet. 🎉`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }

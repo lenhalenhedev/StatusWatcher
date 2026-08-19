@@ -1,4 +1,4 @@
-import { SlashCommandBuilder } from 'discord.js';
+import { SlashCommandBuilder, MessageFlags } from 'discord.js';
 import config from '../config.js';
 import { runManualCheck } from '../core/monitorController.js';
 import { getStatusMessagePayload } from '../services/statusMessage.js';
@@ -13,11 +13,11 @@ export const data = new SlashCommandBuilder()
 /** @param {import('discord.js').ChatInputCommandInteraction} interaction */
 export async function execute(interaction) {
   if (interaction.user.id !== config.adminUserId) {
-    await interaction.reply({ content: 'Only the configured admin can use this command.', ephemeral: true });
+    await interaction.reply({ content: 'Only the configured admin can use this command.', flags: MessageFlags.Ephemeral });
     return;
   }
 
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const ran = await runManualCheck();
   const statusPayload = getStatusMessagePayload(getBotStates(), getMcStates(), 0, getDatabaseStates());
 

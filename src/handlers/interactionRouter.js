@@ -1,3 +1,4 @@
+import { MessageFlags } from 'discord.js';
 import { logError } from '../utils/logger.js';
 
 /**
@@ -85,7 +86,7 @@ export function createInteractionHandler({
 
       const payload = {
         content: 'An error occurred while processing the command.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       };
 
       try {

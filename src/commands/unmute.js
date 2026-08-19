@@ -1,4 +1,4 @@
-import { SlashCommandBuilder } from 'discord.js';
+import { SlashCommandBuilder, MessageFlags } from 'discord.js';
 import config from '../config.js';
 import { resolveTarget, buildTargetChoices } from './targetUtils.js';
 import { unmuteTarget } from '../store/muteStore.js';
@@ -22,14 +22,14 @@ export async function autocomplete(interaction) {
 /** @param {import('discord.js').ChatInputCommandInteraction} interaction */
 export async function execute(interaction) {
   if (interaction.user.id !== config.adminUserId) {
-    await interaction.reply({ content: 'Only the configured admin can use this command.', ephemeral: true });
+    await interaction.reply({ content: 'Only the configured admin can use this command.', flags: MessageFlags.Ephemeral });
     return;
   }
 
   const query = interaction.options.getString('target', true);
   const target = resolveTarget(query);
   if (!target) {
-    await interaction.reply({ content: `No target found matching "${query}".`, ephemeral: true });
+    await interaction.reply({ content: `No target found matching "${query}".`, flags: MessageFlags.Ephemeral });
     return;
   }
 

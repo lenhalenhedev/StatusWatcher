@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { MessageFlags } from 'discord.js';
 
 process.env.DB_PATH = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'statuswatcher-bot-management-')), 'uptime.db');
 process.env.TOKEN ??= 'test-token';
@@ -150,5 +151,5 @@ test('/fetch-bot is admin-only and is registered while legacy commands are absen
     async reply(payload) { this.response = payload; },
   };
   await fetchBot.execute(interaction);
-  assert.equal(interaction.response.ephemeral, true);
+  assert.equal(interaction.response.flags, MessageFlags.Ephemeral);
 });

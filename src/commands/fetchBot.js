@@ -1,4 +1,4 @@
-import { SlashCommandBuilder } from 'discord.js';
+import { SlashCommandBuilder, MessageFlags } from 'discord.js';
 import config from '../config.js';
 import { fetchBotsInBatches } from '../services/botFetchService.js';
 import { getBotStates } from '../monitors/botMonitor.js';
@@ -15,16 +15,16 @@ let fetchInFlight = null;
 /** @param {import('discord.js').ChatInputCommandInteraction} interaction */
 export async function execute(interaction) {
   if (interaction.user.id !== config.adminUserId) {
-    await interaction.reply({ content: 'Only the configured admin can use this command.', ephemeral: true });
+    await interaction.reply({ content: 'Only the configured admin can use this command.', flags: MessageFlags.Ephemeral });
     return;
   }
 
   if (fetchInFlight) {
-    await interaction.reply({ content: 'A bot fetch is already running. Please wait for it to finish.', ephemeral: true });
+    await interaction.reply({ content: 'A bot fetch is already running. Please wait for it to finish.', flags: MessageFlags.Ephemeral });
     return;
   }
 
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   fetchInFlight = (async () => {
     let latestCount = 0;

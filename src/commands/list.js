@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder, MessageFlags } from 'discord.js';
 import { listTargets, getDailyUptime } from '../utils/uptimeTracker.js';
 import { getBotStates } from '../monitors/botMonitor.js';
 import { getMcStates } from '../monitors/mcMonitor.js';
@@ -25,7 +25,7 @@ function resolveLiveDown(target, botStates, mcStates, databaseStates) {
 export async function execute(interaction) {
   const targets = listTargets().filter((target) => config.mcEnabled || target.type !== 'minecraft');
   if (targets.length === 0) {
-    await interaction.reply({ content: 'No targets are being monitored yet.', ephemeral: true });
+    await interaction.reply({ content: 'No targets are being monitored yet.', flags: MessageFlags.Ephemeral });
     return;
   }
 

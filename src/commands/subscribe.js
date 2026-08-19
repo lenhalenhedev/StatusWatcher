@@ -1,4 +1,4 @@
-import { SlashCommandBuilder } from 'discord.js';
+import { SlashCommandBuilder, MessageFlags } from 'discord.js';
 import config from '../config.js';
 import { addSubscription, removeSubscription } from '../store/subscriptionStore.js';
 
@@ -25,7 +25,7 @@ export async function execute(interaction) {
     if (interaction.user.id !== config.adminUserId) {
       await interaction.reply({
         content: 'Only the configured admin can subscribe a role.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -48,6 +48,6 @@ export async function execute(interaction) {
     content: enabled
       ? '🔔 You will now be pinged when an important target goes down.'
       : '🔕 You will no longer be pinged on outages.',
-    ephemeral: true,
+    flags: MessageFlags.Ephemeral,
   });
 }

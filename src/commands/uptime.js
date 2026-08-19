@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder, MessageFlags } from 'discord.js';
 import { resolveTarget, buildTargetChoices } from './targetUtils.js';
 import {
   getDailyUptime,
@@ -29,7 +29,7 @@ export async function execute(interaction) {
   const target = resolveTarget(query);
 
   if (!target) {
-    await interaction.reply({ content: `No target found matching "${query}".`, ephemeral: true });
+    await interaction.reply({ content: `No target found matching "${query}".`, flags: MessageFlags.Ephemeral });
     return;
   }
 

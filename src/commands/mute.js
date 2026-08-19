@@ -1,4 +1,4 @@
-import { SlashCommandBuilder } from 'discord.js';
+import { SlashCommandBuilder, MessageFlags } from 'discord.js';
 import config from '../config.js';
 import { resolveTarget, buildTargetChoices } from './targetUtils.js';
 import { muteTarget } from '../store/muteStore.js';
@@ -30,7 +30,7 @@ export async function autocomplete(interaction) {
 /** @param {import('discord.js').ChatInputCommandInteraction} interaction */
 export async function execute(interaction) {
   if (interaction.user.id !== config.adminUserId) {
-    await interaction.reply({ content: 'Only the configured admin can use this command.', ephemeral: true });
+    await interaction.reply({ content: 'Only the configured admin can use this command.', flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -39,7 +39,7 @@ export async function execute(interaction) {
 
   const target = resolveTarget(query);
   if (!target) {
-    await interaction.reply({ content: `No target found matching "${query}".`, ephemeral: true });
+    await interaction.reply({ content: `No target found matching "${query}".`, flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -47,14 +47,14 @@ export async function execute(interaction) {
   if (durationMs === null) {
     await interaction.reply({
       content: `Invalid duration "${durationRaw}". Use formats like \`30m\`, \`2h\`, or \`1d\`.`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
 
   const until = Date.now() + durationMs;
   if (!muteTarget(target.id, until)) {
-    await interaction.reply({ content: 'Failed to mute the target. Please try again.', ephemeral: true });
+    await interaction.reply({ content: 'Failed to mute the target. Please try again.', flags: MessageFlags.Ephemeral });
     return;
   }
 

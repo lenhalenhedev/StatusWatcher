@@ -8,6 +8,7 @@ import {
   SlashCommandBuilder,
   TextInputBuilder,
   TextInputStyle,
+  MessageFlags,
 } from 'discord.js';
 import runtimeConfig, { reloadRuntimeConfig, serializeRuntimeConfigValue } from '../config.js';
 import { parseMinecraftAddress, RUNTIME_CONFIG_DEFINITIONS } from '../config/runtimeConfigSchema.js';
@@ -213,17 +214,17 @@ export function handlesInteraction(interaction) {
 
 export async function execute(interaction) {
   if (!isAdmin(interaction)) {
-    await interaction.reply({ content: 'Only the configured admin can use /config.', ephemeral: true });
+    await interaction.reply({ content: 'Only the configured admin can use /config.', flags: MessageFlags.Ephemeral });
     return;
   }
   const view = buildConfigEmbed(0);
-  await interaction.reply({ embeds: [view.embed], components: view.components, ephemeral: true });
+  await interaction.reply({ embeds: [view.embed], components: view.components, flags: MessageFlags.Ephemeral });
 }
 
 export async function handleInteraction(interaction) {
   if (!isAdmin(interaction)) {
     if (interaction.deferred || interaction.replied) await interaction.editReply({ content: 'Only the configured admin can use /config.' });
-    else await interaction.reply({ content: 'Only the configured admin can use /config.', ephemeral: true });
+    else await interaction.reply({ content: 'Only the configured admin can use /config.', flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -315,7 +316,7 @@ export async function handleInteraction(interaction) {
 
   if (interaction.isModalSubmit()) {
     const [, , key] = String(interaction.customId).split(':');
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     try {
       if (key === 'add_mc') {
         const name = interaction.fields.getTextInputValue('name').trim();

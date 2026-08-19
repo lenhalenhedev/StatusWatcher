@@ -4,7 +4,7 @@ import config, { subscribeRuntimeConfig } from './config.js';
 import { logError, logInfo } from './utils/logger.js';
 import { printUptimeReport } from './utils/uptimeTracker.js';
 import { closeDatabase } from './utils/db.js';
-import { initBotMonitor, getBotStates, handleMemberAdd, handleMemberRemove } from './monitors/botMonitor.js';
+import { initBotMonitor, getBotStates, handleMemberAdd, handleMemberRemove, refreshBotRoleFlags } from './monitors/botMonitor.js';
 import { initMcMonitor, checkMcServers, getMcStates, getMcState } from './monitors/mcMonitor.js';
 import { initDatabaseMonitor, getDatabaseStates, checkDatabaseTargets, closeDatabaseMonitor } from './monitors/databaseMonitor.js';
 import { cleanLogChannel } from './handlers/notifier.js';
@@ -159,7 +159,7 @@ subscribeRuntimeConfig(() => {
 // Startup sequence
 // ---------------------------------------------------------------------------
 
-client.once('ready', async () => {
+client.once('clientReady', async () => {
   // Set presence immediately - don't let anything below delay this.
   try {
     client.user.setPresence({
@@ -167,7 +167,7 @@ client.once('ready', async () => {
       status: 'online',
     });
   } catch (err) {
-    logError('Index.ready.setPresence', err);
+    logError('Index.clientReady.setPresence', err);
   }
 
   state.isConnected = true;
@@ -177,7 +177,7 @@ client.once('ready', async () => {
   try {
     state.monitoredGuild = await client.guilds.fetch(config.guildId);
   } catch (err) {
-    logError('Index.ready.FATAL', err);
+    logError('Index.clientReady.FATAL', err);
     setTimeout(() => process.exit(1), 1_000);
     return;
   }
@@ -189,7 +189,7 @@ client.once('ready', async () => {
       initMcMonitor();
       await checkMcServers(state.isConnected);
     } catch (err) {
-      logError('Index.ready.mcMonitor', err);
+      logError('Index.clientReady.mcMonitor', err);
     }
   }
 
@@ -198,14 +198,14 @@ client.once('ready', async () => {
       initDatabaseMonitor();
       await checkDatabaseTargets(state.isConnected);
     } catch (err) {
-      logError('Index.ready.databaseMonitor', err);
+      logError('Index.clientReady.databaseMonitor', err);
     }
   }
 
   try {
     await initBotMonitor(state.monitoredGuild);
   } catch (err) {
-    logError('Index.ready.botMonitor', err);
+    logError('Index.clientReady.botMonitor', err);
   }
 
   try {
@@ -222,7 +222,7 @@ client.once('ready', async () => {
       } : {}),
     }));
   } catch (err) {
-    logError('Index.ready.healthServer', err);
+    logError('Index.clientReady.healthServer', err);
   }
 
   // Core monitoring loop can start as soon as the subsystems above are up,
@@ -246,13 +246,13 @@ client.once('ready', async () => {
     try {
       await cleanLogChannel(client);
     } catch (err) {
-      logError('Index.ready.cleanLogChannel', err);
+      logError('Index.clientReady.cleanLogChannel', err);
     }
 
     try {
       await refreshMonitorEmbed();
     } catch (err) {
-      logError('Index.ready.initialEmbedRefresh', err);
+      logError('Index.clientReady.initialEmbedRefresh', err);
     }
   })();
 });

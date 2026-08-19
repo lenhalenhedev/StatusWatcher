@@ -1,4 +1,4 @@
-import { SlashCommandBuilder } from 'discord.js';
+import { SlashCommandBuilder, MessageFlags } from 'discord.js';
 import config from '../config.js';
 import { getBotStates } from '../monitors/botMonitor.js';
 import { getMcStates } from '../monitors/mcMonitor.js';
@@ -14,12 +14,12 @@ export async function execute(interaction) {
   if (interaction.user.id !== config.adminUserId) {
     await interaction.reply({
       content: 'Only the configured admin can use this command.',
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
 
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   resetStatusPage();
   const message = await refreshStatusMessage(interaction.client, {
     channelId: config.monitorChannelId,

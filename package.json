@@ -1,6 +1,6 @@
 {
   "name": "discord-status-bot",
-  "version": "1.12.1",
+  "version": "1.12.2",
   "description": "Discord bot for monitoring Bot and Minecraft Server status",
   "type": "module",
   "main": "src/index.js",

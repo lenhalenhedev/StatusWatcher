@@ -17,6 +17,7 @@ import {
  * {
  *   name: string,
  *   hasImportantRole: boolean,
+ *   presenceStatus: string|null,
  *   isConfirmedDown: boolean,
  *   firstSeenOffline: number|null,
  *   confirmedDownAt: number|null,
@@ -61,6 +62,7 @@ function createInitialState(member, { persist = true } = {}) {
   const state = {
     name: memberName(member),
     hasImportantRole,
+    presenceStatus: null,
     isConfirmedDown: Boolean(isOffline),
     firstSeenOffline: bootFirstSeenOffline,
     confirmedDownAt: bootConfirmedDownAt,
@@ -129,6 +131,7 @@ export function addBotToMonitor(member) {
   if (existing) {
     existing.name = memberName(member);
     existing.hasImportantRole = memberHasImportantRole(member);
+    existing.presenceStatus = member.presence?.status ?? 'offline';
     registerTarget(member.id, existing.name, { type: 'bot', hasImportantRole: existing.hasImportantRole });
     return false;
   }
@@ -210,6 +213,28 @@ export function handleMemberRemove(member) {
   }
 }
 
+/**
+ * Capture a Discord gateway presence transition for a monitored bot.
+ * The next normal cycle consumes this value, so detection does not depend on
+ * a later manual `/recheck` command or on a stale member fixture/reference.
+ * @param {import('discord.js').Presence|null|undefined} oldPresence
+ * @param {import('discord.js').Presence|null|undefined} newPresence
+ * @returns {boolean}
+ */
+export function handlePresenceUpdate(oldPresence, newPresence) {
+  try {
+    const id = newPresence?.userId ?? oldPresence?.userId;
+    const state = id ? botStates.get(id) : null;
+    if (!state) return false;
+    if (newPresence?.guild?.id && newPresence.guild.id !== config.guildId) return false;
+    state.presenceStatus = newPresence?.status ?? 'offline';
+    return true;
+  } catch (err) {
+    logError('BotMonitor.handlePresenceUpdate', err);
+    return false;
+  }
+}
+
 function resetState(state) {
   state.firstSeenOffline = null;
   state.isConfirmedDown = false;
@@ -243,8 +268,13 @@ export async function checkBotStatuses(guild, isConnected) {
 
       state.name = memberName(member);
       state.hasImportantRole = memberHasImportantRole(member);
+      const presenceFromGuildCache = guild?.presences?.cache?.get?.(id);
+      const observedPresenceStatus = state.presenceStatus
+        ?? presenceFromGuildCache?.status
+        ?? member.presence?.status
+        ?? 'offline';
       const startedAt = Date.now();
-      const isCurrentlyOffline = !member.presence || member.presence.status === 'offline';
+      const isCurrentlyOffline = observedPresenceStatus === 'offline';
 
       if (isCurrentlyOffline) {
         let evidenceEventType = null;

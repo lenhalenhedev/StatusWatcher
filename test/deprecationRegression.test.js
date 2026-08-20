@@ -34,6 +34,13 @@ test('runtime listener references an imported refreshBotRoleFlags symbol', () =>
   assert.match(importLine, /\brefreshBotRoleFlags\b/);
 });
 
+test('production wires presenceUpdate to automatic bot monitoring', () => {
+  const source = readSource('src/index.js');
+  assert.match(source, /handlePresenceUpdate/);
+  assert.match(source, /client\.on\(['"]presenceUpdate['"]/);
+  assert.match(source, /Index\.presenceUpdate/);
+});
+
 test('production source does not use deprecated ephemeral response option', () => {
   const deprecatedUses = [];
   for (const filePath of listJavaScriptFiles(srcRoot)) {

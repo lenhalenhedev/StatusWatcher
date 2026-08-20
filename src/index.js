@@ -4,7 +4,7 @@ import config, { subscribeRuntimeConfig } from './config.js';
 import { logError, logInfo } from './utils/logger.js';
 import { printUptimeReport } from './utils/uptimeTracker.js';
 import { closeDatabase } from './utils/db.js';
-import { initBotMonitor, getBotStates, handleMemberAdd, handleMemberRemove, refreshBotRoleFlags } from './monitors/botMonitor.js';
+import { initBotMonitor, getBotStates, handleMemberAdd, handleMemberRemove, handlePresenceUpdate, refreshBotRoleFlags } from './monitors/botMonitor.js';
 import { initMcMonitor, checkMcServers, getMcStates, getMcState } from './monitors/mcMonitor.js';
 import { initDatabaseMonitor, getDatabaseStates, checkDatabaseTargets, closeDatabaseMonitor } from './monitors/databaseMonitor.js';
 import { initWebsiteMonitor, getWebsiteStates, checkWebsiteTargets } from './monitors/websiteMonitor.js';
@@ -68,6 +68,9 @@ client.on('guildMemberAdd', (member) => {
 });
 client.on('guildMemberRemove', (member) => {
   if (handleMemberRemove(member)) void refreshMonitorEmbed();
+});
+client.on('presenceUpdate', (oldPresence, newPresence) => {
+  if (handlePresenceUpdate(oldPresence, newPresence)) void runBackgroundTask('Index.presenceUpdate', () => runner.run());
 });
 client.on('messageCreate', (message) => {
   void handleCertificateMessage(message);

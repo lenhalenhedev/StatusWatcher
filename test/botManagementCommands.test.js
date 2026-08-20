@@ -98,6 +98,49 @@ test('periodic bot checks use runtime state and never full-fetch guild members',
   assert.deepEqual(events, []);
 });
 
+test('normal cycles use the authoritative guild presence cache when member data is stale', async () => {
+  resetDatabase();
+  const id = '20000000000000006';
+  const member = makeMember(id, { status: 'online' });
+  const guild = makeGuild(new Map([[id, member]]));
+  guild.presences = { cache: { get: candidateId => candidateId === id ? { status: 'offline' } : null } };
+  botMonitor.handleMemberAdd(member);
+
+  const state = botMonitor.getBotStates().get(id);
+  state.firstSeenOffline = Date.now() - 86_400_000;
+  const events = await botMonitor.checkBotStatuses(guild, true);
+
+  assert.equal(events[0]?.type, 'DOWN');
+  assert.equal(events[0]?.botId, id);
+});
+
+test('presenceUpdate drives automatic DOWN and UP detection without manual recheck', async () => {
+  resetDatabase();
+  const id = '20000000000000005';
+  const member = makeMember(id, { status: 'online' });
+  const guild = makeGuild(new Map([[id, member]]));
+  botMonitor.handleMemberAdd(member);
+
+  const state = botMonitor.getBotStates().get(id);
+  state.firstSeenOffline = Date.now() - 86_400_000;
+  assert.equal(botMonitor.handlePresenceUpdate(
+    { userId: id, status: 'online', guild },
+    { userId: id, status: 'offline', guild },
+  ), true);
+
+  const downEvents = await botMonitor.checkBotStatuses(guild, true);
+  assert.equal(downEvents[0]?.type, 'DOWN');
+  assert.equal(downEvents[0]?.botId, id);
+
+  assert.equal(botMonitor.handlePresenceUpdate(
+    { userId: id, status: 'offline', guild },
+    { userId: id, status: 'online', guild },
+  ), true);
+  const upEvents = await botMonitor.checkBotStatuses(guild, true);
+  assert.equal(upEvents[0]?.type, 'UP');
+  assert.equal(upEvents[0]?.botId, id);
+});
+
 test('/fetch-bot processes bot records in batches of ten and reports cumulative progress', async () => {
   resetDatabase();
   const staleId = '29999999999999999';

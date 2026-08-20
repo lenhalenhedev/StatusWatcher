@@ -20,9 +20,10 @@ test('manual recheck includes database runtime state', async () => {
   assert.match(text, /getStatusMessagePayload\(getBotStates\(\), getMcStates\(\), 0, getDatabaseStates\(\)\)/);
 });
 
-test('resend embed supplies database state provider', async () => {
+test('resend embed supplies database and website state providers', async () => {
   const text = await source('resendEmbed.js');
   assert.match(text, /getDatabaseStates/);
+  assert.match(text, /getWebsiteStates/);
   assert.match(text, /getMcStates/);
 });
 

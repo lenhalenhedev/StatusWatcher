@@ -3,6 +3,7 @@ import config from '../config.js';
 import { getBotStates } from '../monitors/botMonitor.js';
 import { getMcStates } from '../monitors/mcMonitor.js';
 import { getDatabaseStates } from '../monitors/databaseMonitor.js';
+import { getWebsiteStates } from '../monitors/websiteMonitor.js';
 import { refreshStatusMessage, resetStatusPage } from '../services/statusMessage.js';
 
 export const data = new SlashCommandBuilder()
@@ -26,6 +27,7 @@ export async function execute(interaction) {
     getBotStates,
     getMcStates,
     getDatabaseStates,
+    getWebsiteStates,
     forceNew: true,
   });
 

@@ -82,6 +82,9 @@ test('acknowledges an active incident, resolves communication, and rejects repea
     communication_resolved_by: '123456789012345678',
   });
   assert.match(result.replies[0], /acknowledged/i);
+  assert.match(result.replies[0], /STILL_DOWN reminders are suppressed/i);
+  assert.match(result.replies[0], /health monitoring continues/i);
+  assert.match(result.replies[0], /UP event will automatically resolve/i);
   assert.match(result.replies[1], /communication resolved/i);
   assert.match(result.replies[2], /not in an open state/i);
   assert.match(result.replies[3], /already resolved/i);

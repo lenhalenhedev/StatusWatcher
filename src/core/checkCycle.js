@@ -97,7 +97,7 @@ export function createCheckRunner({
         const botEvents = await checkBots(guild, isConnected);
         for (const event of botEvents) {
           const { state } = event;
-          recordIncidentTransition({
+          const transition = recordIncidentTransition({
             event,
             serviceId: event.botId,
             serviceType: 'bot',
@@ -107,52 +107,64 @@ export function createCheckRunner({
             now,
           });
           if (muteCheck(event.botId) || maintenanceCheck(event.botId, 'bot', now())) continue;
+          const incidentId = transition?.incident?.id ?? null;
           if (event.type === 'DOWN') {
-            downItems.push({ id: event.botId, name: state.name, type: 'bot', error: null, important: state.hasImportantRole });
+            downItems.push({ id: event.botId, incidentId, name: state.name, type: 'bot', error: null, important: state.hasImportantRole });
           } else if (event.type === 'UP') {
-            upItems.push({ id: event.botId, name: state.name, type: 'bot', downSince: event.downSince });
-          } else if (event.type === 'STILL_DOWN' && consumeStillDownReminder(state)) {
-            stillItems.push({ id: event.botId, name: state.name, type: 'bot', downSince: event.downSince, error: null });
+            upItems.push({ id: event.botId, incidentId, name: state.name, type: 'bot', downSince: event.downSince });
+          } else if (event.type === 'STILL_DOWN'
+            && transition?.incident?.status !== 'ACKNOWLEDGED'
+            && consumeStillDownReminder(state)) {
+            stillItems.push({ id: event.botId, incidentId, name: state.name, type: 'bot', downSince: event.downSince, error: null });
           }
         }
       }
 
       for (const result of await checkMinecraft(isConnected)) {
         const { server, state, event } = result;
-        recordIncidentTransition({ event, serviceId: server.id, serviceType: 'minecraft', name: server.name, state, incident, now });
+        const transition = recordIncidentTransition({ event, serviceId: server.id, serviceType: 'minecraft', name: server.name, state, incident, now });
         if (muteCheck(server.id) || maintenanceCheck(server.id, 'minecraft', now())) continue;
+        const incidentId = transition?.incident?.id ?? null;
         if (event.type === 'DOWN') {
-          downItems.push({ id: server.id, name: server.name, type: 'minecraft', error: event.error, important: true });
+          downItems.push({ id: server.id, incidentId, name: server.name, type: 'minecraft', error: event.error, important: true });
         } else if (event.type === 'UP') {
-          upItems.push({ id: server.id, name: server.name, type: 'minecraft', downSince: event.downSince });
-        } else if (event.type === 'STILL_DOWN' && consumeStillDownReminder(state)) {
-          stillItems.push({ id: server.id, name: server.name, type: 'minecraft', downSince: event.downSince, error: event.error });
+          upItems.push({ id: server.id, incidentId, name: server.name, type: 'minecraft', downSince: event.downSince });
+        } else if (event.type === 'STILL_DOWN'
+          && transition?.incident?.status !== 'ACKNOWLEDGED'
+          && consumeStillDownReminder(state)) {
+          stillItems.push({ id: server.id, incidentId, name: server.name, type: 'minecraft', downSince: event.downSince, error: event.error });
         }
       }
 
       for (const result of await checkWebsites(isConnected)) {
         const { target, state, event } = result;
-        recordIncidentTransition({ event, serviceId: target.id, serviceType: 'website', name: target.name, state, incident, now });
+        const transition = recordIncidentTransition({ event, serviceId: target.id, serviceType: 'website', name: target.name, state, incident, now });
         if (muteCheck(target.id) || maintenanceCheck(target.id, 'website', now())) continue;
+        const incidentId = transition?.incident?.id ?? null;
         if (event.type === 'DOWN') {
-          downItems.push({ id: target.id, name: target.name, type: 'website', error: event.error, important: false });
+          downItems.push({ id: target.id, incidentId, name: target.name, type: 'website', error: event.error, important: false });
         } else if (event.type === 'UP') {
-          upItems.push({ id: target.id, name: target.name, type: 'website', downSince: event.downSince });
-        } else if (event.type === 'STILL_DOWN' && consumeStillDownReminder(state)) {
-          stillItems.push({ id: target.id, name: target.name, type: 'website', downSince: event.downSince, error: event.error });
+          upItems.push({ id: target.id, incidentId, name: target.name, type: 'website', downSince: event.downSince });
+        } else if (event.type === 'STILL_DOWN'
+          && transition?.incident?.status !== 'ACKNOWLEDGED'
+          && consumeStillDownReminder(state)) {
+          stillItems.push({ id: target.id, incidentId, name: target.name, type: 'website', downSince: event.downSince, error: event.error });
         }
       }
 
       for (const result of await checkDatabases(isConnected)) {
         const { target, state, event } = result;
-        recordIncidentTransition({ event, serviceId: target.id, serviceType: 'database', name: target.name, state, incident, now });
+        const transition = recordIncidentTransition({ event, serviceId: target.id, serviceType: 'database', name: target.name, state, incident, now });
         if (muteCheck(target.id) || maintenanceCheck(target.id, 'database', now())) continue;
+        const incidentId = transition?.incident?.id ?? null;
         if (event.type === 'DOWN') {
-          downItems.push({ id: target.id, name: target.name, type: 'database', error: event.error, important: false });
+          downItems.push({ id: target.id, incidentId, name: target.name, type: 'database', error: event.error, important: false });
         } else if (event.type === 'UP') {
-          upItems.push({ id: target.id, name: target.name, type: 'database', downSince: event.downSince });
-        } else if (event.type === 'STILL_DOWN' && consumeStillDownReminder(state)) {
-          stillItems.push({ id: target.id, name: target.name, type: 'database', downSince: event.downSince, error: event.error });
+          upItems.push({ id: target.id, incidentId, name: target.name, type: 'database', downSince: event.downSince });
+        } else if (event.type === 'STILL_DOWN'
+          && transition?.incident?.status !== 'ACKNOWLEDGED'
+          && consumeStillDownReminder(state)) {
+          stillItems.push({ id: target.id, incidentId, name: target.name, type: 'database', downSince: event.downSince, error: event.error });
         }
       }
 

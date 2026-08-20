@@ -114,8 +114,12 @@ export function createIncidentManager({ store, now = () => Date.now() }) {
         return { incident, shouldNotify: true, event };
       }
 
-      store.updateIncident(incident.id, incidentPatchFromEvent(event, INCIDENT_STATUS.OPEN));
-      return { incident: { ...incident, ...incidentPatchFromEvent(event, INCIDENT_STATUS.OPEN) }, shouldNotify: false, event };
+      const nextStatus = incident.status === INCIDENT_STATUS.ACKNOWLEDGED
+        ? INCIDENT_STATUS.ACKNOWLEDGED
+        : INCIDENT_STATUS.OPEN;
+      const patch = incidentPatchFromEvent(event, nextStatus);
+      store.updateIncident(incident.id, patch);
+      return { incident: { ...incident, ...patch }, shouldNotify: false, event };
     }
 
     if (event.eventType === 'STILL_DOWN') {

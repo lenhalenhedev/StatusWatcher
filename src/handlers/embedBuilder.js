@@ -194,9 +194,15 @@ function typeLabel(type) {
   return 'Server Bot';
 }
 
+function incidentLabel(item) {
+  return Number.isSafeInteger(item?.incidentId) && item.incidentId > 0
+    ? `\nIncident ID: \`${item.incidentId}\``
+    : '';
+}
+
 /**
  * Build a single summary embed for one or more targets that just went DOWN.
- * @param {Array<{ name: string, type: string, error?: string|null, important?: boolean }>} items
+ * @param {Array<{ name: string, type: string, incidentId?: number|null, error?: string|null, important?: boolean }>} items
  */
 export function buildDownSummaryEmbed(items) {
   const title = items.length === 1
@@ -214,7 +220,7 @@ export function buildDownSummaryEmbed(items) {
     const error = it.error ? `\nError: \`${String(it.error).substring(0, 300)}\`` : '';
     embed.addFields({
       name: `${it.name}${star}`,
-      value: `${typeLabel(it.type)}${error}`.substring(0, FIELD_VALUE_LIMIT),
+      value: `${typeLabel(it.type)}${incidentLabel(it)}${error}`.substring(0, FIELD_VALUE_LIMIT),
       inline: false,
     });
   }
@@ -224,7 +230,7 @@ export function buildDownSummaryEmbed(items) {
 
 /**
  * Build a single summary embed for targets that are still down.
- * @param {Array<{ name: string, type: string, downSince: number, error?: string|null }>} items
+ * @param {Array<{ name: string, type: string, incidentId?: number|null, downSince: number, error?: string|null }>} items
  */
 export function buildStillDownSummaryEmbed(items) {
   const title = items.length === 1
@@ -242,7 +248,7 @@ export function buildStillDownSummaryEmbed(items) {
     const error = it.error ? `\nError: \`${String(it.error).substring(0, 300)}\`` : '';
     embed.addFields({
       name: it.name,
-      value: `${typeLabel(it.type)} — down for **${min} min**${error}`.substring(0, FIELD_VALUE_LIMIT),
+      value: `${typeLabel(it.type)} — down for **${min} min**${incidentLabel(it)}${error}`.substring(0, FIELD_VALUE_LIMIT),
       inline: false,
     });
   }
@@ -252,7 +258,7 @@ export function buildStillDownSummaryEmbed(items) {
 
 /**
  * Build a single summary embed for targets that just recovered.
- * @param {Array<{ name: string, type: string, downSince?: number }>} items
+ * @param {Array<{ name: string, type: string, incidentId?: number|null, downSince?: number }>} items
  */
 export function buildUpSummaryEmbed(items) {
   const title = items.length === 1
@@ -269,7 +275,7 @@ export function buildUpSummaryEmbed(items) {
     const min = it.downSince ? getElapsedMinutes(it.downSince) : 0;
     embed.addFields({
       name: it.name,
-      value: `${typeLabel(it.type)} — recovered after **${min} min**`.substring(0, FIELD_VALUE_LIMIT),
+      value: `${typeLabel(it.type)} — recovered after **${min} min**${incidentLabel(it)}`.substring(0, FIELD_VALUE_LIMIT),
       inline: false,
     });
   }

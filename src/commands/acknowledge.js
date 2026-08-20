@@ -23,7 +23,7 @@ export async function execute(interaction) {
     return;
   }
   await interaction.reply({
-    content: `Incident **${incident.id}** acknowledged. Health monitoring continues until recovery.`,
+    content: `Incident **${incident.id}** acknowledged. Repeated STILL_DOWN reminders are suppressed; health monitoring continues, and an UP event will automatically resolve this incident.`,
     flags: MessageFlags.Ephemeral,
   });
 }

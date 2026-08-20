@@ -28,7 +28,7 @@ test('registers SLO, audit, and ownership commands with unique names', () => {
     process.stdout.write(JSON.stringify({ names, unique: new Set(names).size === names.length }));
   `);
   assert.equal(result.unique, true);
-  assert.deepEqual(result.names.slice(-3), ['slo', 'audit', 'ownership']);
+  assert.deepEqual(result.names.slice(-5), ['slo', 'audit', 'ownership', 'help', 'ping']);
 });
 
 test('denies the three elite control commands to non-admin users', () => {

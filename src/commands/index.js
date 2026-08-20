@@ -21,6 +21,8 @@ import * as diagnose from './diagnose.js';
 import * as slo from './slo.js';
 import * as audit from './audit.js';
 import * as ownership from './ownership.js';
+import * as help from './help.js';
+import * as ping from './ping.js';
 
 /**
  * Every slash command module. Each exports `data` (a SlashCommandBuilder) and
@@ -50,7 +52,11 @@ export const commandModules = [
   slo,
   audit,
   ownership,
+  help,
+  ping,
 ];
+
+help.setCommandModules(commandModules);
 
 /** Lookup map keyed by command name for fast dispatch. */
 export const commandMap = new Map(commandModules.map((m) => [m.data.name, m]));

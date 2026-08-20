@@ -2,27 +2,27 @@
 
 ## Overview
 
-Chuyển việc quản lý bot uptime từ quét toàn bộ member ở mỗi monitoring cycle sang mô hình event-driven. Bot sẽ tự động thêm Discord bot khi nhận `guildMemberAdd`, tự động archive và loại khỏi runtime khi nhận `guildMemberRemove`, và khôi phục active bot từ SQLite khi khởi động. Lệnh `/add-bot` và `/remove-bot` sẽ bị loại bỏ; `/fetch-bot` là cơ chế reconciliation thủ công, fetch member theo batch tối đa 10 bot, nghỉ 10 giây giữa các batch và lưu kết quả vào SQLite rồi nạp vào RAM.
+Move uptime bot management from scanning every member during each monitoring cycle to an event-driven model. The bot automatically adds Discord bots on `guildMemberAdd`, archives and removes them from runtime on `guildMemberRemove`, and restores active bots from SQLite at startup. The `/add-bot` and `/remove-bot` commands are removed; `/fetch-bot` is a manual reconciliation mechanism that fetches members in batches of up to 10 bots, waits 10 seconds between batches, stores results in SQLite, and loads them into RAM.
 
 ## Architecture Decisions
 
-1. **SQLite là nguồn dữ liệu bền vững; `botStates` là runtime cache.** Startup đọc các target bot active từ SQLite, kiểm tra từng ID còn trong guild hay không, xóa target không còn tồn tại khỏi SQLite, và tạo runtime state cho target hợp lệ.
-2. **Gateway events là đường cập nhật thường xuyên.** `guildMemberAdd` chỉ đăng ký member nếu member là bot; `guildMemberRemove` archive bot tương ứng. Monitoring cycle không gọi `guild.members.fetch()` nữa.
-3. **`/fetch-bot` là reconciliation có kiểm soát.** Command fetch member theo batch 10, đếm lũy kế `fetched: N bot`, nghỉ 10 giây giữa các batch, dùng member cache/chunking API hiện có của Discord.js và cập nhật SQLite/RAM sau mỗi batch hoặc sau khi hoàn tất.
-4. **Embed ưu tiên `hasImportantRole`.** Nếu `IMPORTANT_ROLE_ID` tồn tại trong member roles, bot được xếp trước các bot thường. Minecraft vẫn đứng trước bot ở page 1 khi `MC_ENABLE=true`. Mỗi page chứa tối đa 10 bot; bot quan trọng vượt quá phần còn lại của page 1 sẽ tự nhiên sang page 2 hoặc cao hơn.
-5. **Không giữ lại đường quản trị cũ.** `/add-bot`, `/remove-bot`, parser input và menu remove chỉ bị xóa khi không còn call site; test cũ sẽ được thay bằng test event lifecycle, startup reconciliation, fetch batching và ordering.
+1. **SQLite is the durable data source; `botStates` is the runtime cache.** At startup, read active bot targets from SQLite, check whether each ID is still in the guild, delete missing targets from SQLite, and create runtime state for valid targets.
+2. **Gateway events are the regular update path.** `guildMemberAdd` registers a member only when the member is a bot; `guildMemberRemove` archives the corresponding bot. The monitoring cycle no longer calls `guild.members.fetch()`.
+3. **`/fetch-bot` is controlled reconciliation.** The command fetches members in batches of 10, reports cumulative `fetched: N bot`, waits 10 seconds between batches, uses the existing Discord.js member-cache/chunking API, and updates SQLite/RAM after each batch or after completion.
+4. **The embed prioritizes `hasImportantRole`.** When `IMPORTANT_ROLE_ID` exists in a member's roles, the bot is ordered before ordinary bots. Minecraft remains before bots on page 1 when `MC_ENABLE=true`. Each page contains at most 10 bots; important bots that exceed the remaining space on page 1 naturally move to page 2 or later.
+5. **Do not retain the old administration path.** Remove `/add-bot`, `/remove-bot`, their input parsers, and removal menus only after reference searches confirm that no call sites remain; replace old tests with event-lifecycle, startup-reconciliation, fetch-batching, and ordering tests.
 
 ## Task List
 
 ### Phase 1: Foundation
-- [ ] Xác nhận schema `targets` đã lưu `type`, `has_important_role`, `status` và các helper archive/list hiện có.
-- [ ] Tách helper tạo runtime state từ SQLite row và helper tạo state từ GuildMember.
-- [ ] Viết RED tests cho startup restore, missing-guild archive, member add/remove và không full-fetch trong cycle.
+- [ ] Confirm that the `targets` schema stores `type`, `has_important_role`, and `status`, and that archive/list helpers already exist.
+- [ ] Separate the helper that creates runtime state from a SQLite row and the helper that creates state from a GuildMember.
+- [ ] Write RED tests for startup restore, missing-guild archival, member add/remove, and the absence of full fetches during a cycle.
 
 ### Phase 2: Fetch command
-- [ ] Viết RED tests cho `/fetch-bot`: admin gate, batch size 10, cumulative progress, 10-second delay, persistence and RAM restore.
-- [ ] Implement fetch service với clock/sleep injectable để test không phải chờ 10 giây thật.
-- [ ] Register `/fetch-bot` and remove old commands from command registry.
+- [ ] Write RED tests for `/fetch-bot`: admin gate, batch size 10, cumulative progress, 10-second delay, persistence, and RAM restore.
+- [ ] Implement the fetch service with injectable clock/sleep functions so tests do not wait 10 real seconds.
+- [ ] Register `/fetch-bot` and remove old commands from the command registry.
 
 ### Phase 3: Embed and lifecycle integration
 - [ ] Sort bot states by important role first while preserving deterministic tie-break order.

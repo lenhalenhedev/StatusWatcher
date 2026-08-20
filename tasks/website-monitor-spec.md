@@ -8,9 +8,9 @@ Add administrator-managed website targets to `/config`. Each website has a displ
 
 | Item | Contract |
 |---|---|
-| Add control | `/config` button `Add Website`, administrator only |
+| Add control | `/config` button `Add Service`, then the `Website` option, administrator only |
 | Add modal | Required display name and required URL |
-| Remove control | `/config` button `Remove Website`, paginated select menu when needed |
+| Remove control | `/config` button `Remove Service`, then the `Website` option and a paginated select menu when needed |
 | Persistence | SQLite table `website_targets`; stable generated ID; unique URL; created/updated timestamps |
 | Immediate application | Save, register target, reload monitor state, refresh status message without restart |
 | Status order | Website section first, then `🗄️ Databases`, then Minecraft, then bots |
@@ -48,7 +48,7 @@ Website state mirrors database state: `id`, `name`, `url`, `isConfirmedDown`, `f
 | Timeout, DNS failure, connection reset, invalid response | Safe error category; no raw error text disclosed |
 | Redirect response | Safe failure; no second URL request |
 | Large response body | Never consumed; bounded and canceled |
-| More than 25 website targets | Paginated Remove Website selector and bounded status field |
+| More than 25 website targets | Paginated Website selector under Remove Service and a bounded status field |
 | Non-admin interaction | Rejected with ephemeral authorization response |
 | Legacy MC retry settings present in SQLite or environment | Not exposed in `/config`; no retry options passed to probe client |
 | Existing bot/database/Minecraft tests | No behavior regression |

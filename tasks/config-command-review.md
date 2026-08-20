@@ -3,8 +3,8 @@
 ## Correctness
 
 - `/config` is registered in the command map and routed through button, select-menu, and modal interactions.
-- Add MC validates `name` and `host:port`, persists the server in SQLite, registers the target, reloads runtime config, and refreshes the status message.
-- Remove MC uses a Discord select menu, deletes the server row, target row, target-scoped metadata, and in-memory monitor state, then refreshes the runtime embed.
+- Add Service -> MC validates `name` and `host:port`, persists the server in SQLite, registers the target, reloads runtime config, and refreshes the status message.
+- Remove Service -> MC uses a Discord select menu, deletes the server row, target row, target-scoped metadata, and in-memory monitor state, then refreshes the runtime embed.
 - Scalar settings are validated by `runtimeConfigSchema`, persisted in `runtime_config`, reloaded immediately, and applied to schedules, monitoring thresholds, alerts, role priority, and channels.
 - Config view uses five action rows at most. It shows up to 23 configuration buttons without navigation; when navigation is required, it uses a navigation row plus at most 20 configuration buttons (four rows of five).
 - Empty Monitor/Log Channel configuration is handled safely at startup; Discord channel fetches are skipped until configured.
@@ -22,7 +22,7 @@
 - Runtime settings use one SQLite snapshot and prepared statements.
 - Configuration reload coalesces status refreshes through the existing status refresh guard.
 - Monitoring schedules are restarted only when configuration changes.
-- Remove MC dropdown options are paginated in groups of 25.
+- Remove Service selectors are paginated in groups of 25 per service type.
 
 ## Verification
 

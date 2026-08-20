@@ -1,47 +1,47 @@
-# Checklist `/config`
+# `/config` Checklist
 
-## Khảo sát và thiết kế
+## Discovery and Design
 
-- [ ] Xác định các environment key được chuyển vào SQLite.
-- [ ] Giữ bootstrap secrets và hạ tầng ngoài phạm vi `/config`.
-- [ ] Chốt schema runtime config và minecraft servers.
-- [ ] Chốt custom-id namespace, modal field ids và pagination state.
+- [ ] Identify the environment keys that move into SQLite.
+- [ ] Keep bootstrap secrets and infrastructure outside `/config`.
+- [ ] Finalize the runtime-configuration and Minecraft-server schemas.
+- [ ] Finalize the custom-ID namespace, modal field IDs, and pagination state.
 
-## Persistence và runtime
+## Persistence and Runtime
 
-- [ ] Tạo bảng config key/value bằng migration idempotent.
-- [ ] Tạo bảng minecraft servers và index cần thiết.
-- [ ] Seed environment chỉ khi SQLite chưa có key.
-- [ ] Validate input trước khi gọi store.
-- [ ] Reload snapshot nguyên tử sau mỗi thay đổi.
-- [ ] Apply ngay monitoring interval, cron, channels, role, MC targets và retry policy.
+- [ ] Create the key/value configuration table with an idempotent migration.
+- [ ] Create the Minecraft-server table and required indexes.
+- [ ] Seed environment values only when an SQLite key does not exist.
+- [ ] Validate input before calling the store.
+- [ ] Atomically reload the snapshot after every change.
+- [ ] Apply monitoring interval, cron, channels, role, Minecraft targets, and retry policy immediately.
 
 ## Discord UI
 
-- [ ] Đăng ký `/config`.
-- [ ] Admin authorization ở execute và component submit.
-- [ ] Embed có mô tả và giá trị hiện tại.
-- [ ] Modal Add MC với name và host:port.
-- [ ] Select Remove MC với danh sách hiện tại.
-- [ ] Modal cho Important Role, Monitor Channel, Log Channel.
-- [ ] Modal cho toàn bộ numeric/backoff/cron config.
-- [ ] Pagination 23 config buttons/page, PREV/NEXT khi cần.
-- [ ] Hủy/đóng modal và lỗi validation không làm mất interaction.
+- [ ] Register `/config`.
+- [ ] Enforce administrator authorization during execution and component submission.
+- [ ] Show descriptions and current values in the embed.
+- [ ] Select MC through Add Service and open a modal with name and host:port.
+- [ ] Select MC through Remove Service and show a selector containing current servers.
+- [ ] Provide modals for Important Role, Monitor Channel, and Log Channel.
+- [ ] Provide modals for all numeric, backoff, and cron settings.
+- [ ] Support 23 configuration buttons per page and PREV/NEXT when needed.
+- [ ] Ensure modal cancellation, closing, and validation errors do not lose the interaction.
 
-## Kiểm thử
+## Testing
 
-- [ ] RED tests cho parsing và validation.
-- [ ] RED tests cho SQLite round-trip và seed không ghi đè.
-- [ ] RED tests cho add/remove Minecraft.
-- [ ] RED tests cho admin gate và modal/select routing.
-- [ ] RED tests cho pagination <=23 và >23.
-- [ ] GREEN focused tests sau từng slice.
-- [ ] Syntax check và `git diff --check`.
-- [ ] Full test suite; ghi rõ lỗi native baseline nếu còn.
+- [ ] RED tests for parsing and validation.
+- [ ] RED tests for SQLite round trips and non-overwriting seeds.
+- [ ] RED tests for adding/removing Minecraft servers.
+- [ ] RED tests for administrator gating and modal/select routing.
+- [ ] RED tests for pagination at or below 23 and above 23 items.
+- [ ] GREEN focused tests after each slice.
+- [ ] Run syntax checks and `git diff --check`.
+- [ ] Run the full suite and document any remaining native baseline failure.
 
-## Bàn giao
+## Handoff
 
-- [ ] Cập nhật `.env.example` loại bỏ các key đã chuyển sang `/config` hoặc ghi chú migration.
-- [ ] Cập nhật README hướng dẫn bootstrap và `/config`.
-- [ ] Đóng gói source không gồm node_modules, `.git` và data runtime.
-- [ ] Ghi hướng dẫn deploy commands và restart/migration.
+- [ ] Update `.env.example` to remove keys moved to `/config` or document their migration.
+- [ ] Update the README with bootstrap and `/config` instructions.
+- [ ] Package source without node_modules, `.git`, or runtime data.
+- [ ] Document deploy commands and restart/migration instructions.

@@ -6,7 +6,7 @@ This change adds administrator-managed Website targets to `/config`, monitors th
 
 ## Website configuration
 
-The `/config` view now contains `Add Website` and `Remove Website` controls before the database controls. `Add Website` accepts a display name and an HTTP/HTTPS URL. `Remove Website` uses a paginated Discord select menu. Website target identifiers, names, and normalized URLs are persisted through the existing SQLite runtime-config store.
+The `/config` view now contains grouped `Add Service` and `Remove Service` controls before the database controls. Each grouped dropdown offers the `Website` option. Selecting it opens the existing add modal or paginated removal selector. Website target identifiers, names, and normalized URLs are persisted through the existing SQLite runtime-config store.
 
 Website status uses Node.js Fetch and reads `Response.status` without consuming the response body. Status codes from 200 through 399 are considered healthy; 400 through 599 are recorded as bounded HTTP failures and are subject to the existing confirmation threshold before a DOWN event is emitted. Redirects are not followed automatically.
 

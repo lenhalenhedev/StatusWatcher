@@ -1,65 +1,65 @@
-# Kế hoạch triển khai `/config`
+# `/config` Implementation Plan
 
-## Phạm vi
+## Scope
 
-Xây dựng command Discord `/config` dành cho admin để quản trị cấu hình runtime trong SQLite, không dùng các biến môi trường cho các khóa cấu hình mà người dùng yêu cầu chỉnh từ Discord.
+Build the administrator-only Discord `/config` command to manage runtime configuration in SQLite without using environment variables for keys that the operator must edit through Discord.
 
-## Nguyên tắc thiết kế
+## Design Principles
 
-1. `TOKEN`, `CLIENT_ID`, `GUILD_ID`, `ADMIN_USER_ID`, `DB_PATH` và `HEALTH_PORT` vẫn là bootstrap/runtime infrastructure từ môi trường; không lưu token vào SQLite.
-2. Các cấu hình nghiệp vụ gồm monitor/log channel, important role, monitoring timings, retry policy, digest cron và danh sách Minecraft server phải được lưu trong SQLite.
-3. Cấu hình SQLite được nạp thành runtime snapshot có thể thay thế nguyên tử; mọi consumer đọc snapshot mới khi chạy.
-4. `/config` phải được giới hạn cho `ADMIN_USER_ID`, xác thực dữ liệu ở boundary và dùng prepared statements.
-5. Minecraft được bật khi có ít nhất một server active trong SQLite; xóa server sẽ ngừng monitor server đó và loại khỏi embed.
-6. Config UI dùng custom-id namespace riêng, modal cho dữ liệu nhập và select menu cho xóa server.
-7. Một trang hiển thị tối đa 23 nút cấu hình; khi có hơn 23 mục thì dành hàng đầu cho PREV/NEXT và edit cùng embed khi đổi trang.
+1. `TOKEN`, `CLIENT_ID`, `GUILD_ID`, `ADMIN_USER_ID`, `DB_PATH`, and `HEALTH_PORT` remain bootstrap/runtime infrastructure from the environment; tokens are never stored in SQLite.
+2. Business configuration includes monitor/log channels, important role, monitoring timings, retry policy, digest cron, and the Minecraft server list; these values are stored in SQLite.
+3. SQLite configuration is loaded into an atomically replaceable runtime snapshot; every consumer reads the latest snapshot while running.
+4. `/config` is restricted to `ADMIN_USER_ID`, validates data at the boundary, and uses prepared statements.
+5. Minecraft is enabled when at least one active server exists in SQLite; deleting a server stops its monitor and removes it from the embed.
+6. The Config UI uses its own custom-ID namespace, modals for entered data, and select menus for server removal.
+7. A page displays at most 23 configuration buttons; when more than 23 items exist, the first row is reserved for PREV/NEXT and the same embed is edited when the page changes.
 
 ## Slices
 
-### Slice 1: Config schema/store
+### Slice 1: Configuration schema/store
 
-- Thêm bảng `runtime_config` dạng key/value hoặc schema tương đương.
-- Thêm bảng `minecraft_servers` với id, name, host, port, active, timestamps.
-- Cung cấp get/set/list/delete transaction-safe.
-- Seed giá trị từ environment chỉ cho migration lần đầu, không ghi đè giá trị SQLite ở mỗi startup.
+- Add a `runtime_config` key/value table or an equivalent schema.
+- Add a `minecraft_servers` table with ID, name, host, port, active flag, and timestamps.
+- Provide transaction-safe get/set/list/delete operations.
+- Seed values from the environment only during first-time migration; never overwrite SQLite values on every startup.
 
-### Slice 2: Runtime config manager
+### Slice 2: Runtime configuration manager
 
-- Expose snapshot immutable và `reloadRuntimeConfig()`.
-- Parse/validate integer, cron, Discord snowflake, `domain:port`, backoff list.
-- Cung cấp getters cho consumers.
-- Cho phép cập nhật interval/check schedule và MC monitor sau khi config thay đổi.
+- Expose an immutable snapshot and `reloadRuntimeConfig()`.
+- Parse and validate integers, cron expressions, Discord snowflakes, `domain:port`, and backoff lists.
+- Provide getters for consumers.
+- Allow the monitoring interval/check schedule and Minecraft monitor to update after configuration changes.
 
-### Slice 3: RED/GREEN config interactions
+### Slice 3: RED/GREEN configuration interactions
 
-- `/config` admin gate.
-- Embed mô tả chức năng và giá trị hiện tại.
-- Button mở modal cho từng cấu hình scalar.
-- Add MC modal: server name + `host:port`.
-- Remove MC select menu: chọn server hiện có và xóa.
-- Modal submit lưu SQLite, reload snapshot, apply runtime và update embed.
+- Enforce the `/config` administrator gate.
+- Show an embed describing each function and its current value.
+- Open a modal for each scalar setting.
+- Add Service selects MC, then opens a modal for server name plus `host:port`.
+- Remove Service selects MC, then shows a menu to choose and delete an existing server.
+- On modal submit, save to SQLite, reload the snapshot, apply runtime changes, and update the embed.
 
 ### Slice 4: Pagination
 
-- Tối đa 23 config buttons/page.
-- Nếu vượt 23: hàng đầu là PREV/NEXT, các config buttons nằm sau; page switch dùng `interaction.update`.
-- Không tạo component vượt giới hạn Discord.
+- Allow at most 23 configuration buttons per page.
+- If the list exceeds 23 items, put PREV/NEXT in the first row and the configuration buttons after it; page switches use `interaction.update`.
+- Never create a component set that exceeds Discord limits.
 
 ### Slice 5: Consumer migration
 
-- `embedBuilder`, `notifier`, `digest`, target utils và command admin đọc runtime snapshot.
-- MC monitor chuyển sang nhiều server, mỗi server có state riêng và target id ổn định.
-- Check interval/cron/retry/backoff lấy từ snapshot.
-- Config update channel/role áp dụng ngay cho status embed và notifier.
+- `embedBuilder`, `notifier`, `digest`, target utilities, and administrator commands read the runtime snapshot.
+- The Minecraft monitor supports multiple servers, each with its own state and stable target ID.
+- Check interval, cron, retry, and backoff values come from the snapshot.
+- Channel and role updates apply immediately to the status embed and notifier.
 
-## Acceptance criteria
+## Acceptance Criteria
 
-- `/config` khi admin gọi hiển thị embed với mô tả, giá trị hiện tại và các nút.
-- Non-admin không thể mở hoặc submit config.
-- Add MC nhận `name` và `host:port` hợp lệ, ghi SQLite, xuất hiện trong uptime embed ngay.
-- Remove MC dùng dropdown, xóa target/server khỏi SQLite, RAM và embed ngay.
-- Important role/channel và mọi numeric/cron config được lưu SQLite và có hiệu lực cho lần gọi tiếp theo mà không restart.
-- Restart không làm mất config SQLite; environment chỉ làm seed fallback khi key chưa tồn tại.
-- Trên 23 mục có PREV/NEXT; dưới hoặc bằng 23 mục không có hai nút này.
-- Input sai bị từ chối với lỗi dễ hiểu, không crash process.
-- Test focused pass; full suite được chạy và giới hạn native dependency được ghi nhận nếu tái diễn.
+- When an administrator invokes `/config`, it displays an embed with descriptions, current values, and controls.
+- Non-administrators cannot open or submit configuration changes.
+- Add Service -> MC accepts a valid `name` and `host:port`, writes SQLite, and appears in the uptime embed immediately.
+- Remove Service -> MC uses a dropdown, removes the target/server from SQLite, RAM, and the embed immediately.
+- Important role/channel and all numeric/cron settings are stored in SQLite and take effect on the next operation without a restart.
+- Restarting does not lose SQLite configuration; environment values only seed missing keys.
+- More than 23 items shows PREV/NEXT; 23 or fewer items does not.
+- Invalid input is rejected with a clear message and does not crash the process.
+- Focused tests pass; the full suite runs, and any recurring native-dependency limit is documented separately.

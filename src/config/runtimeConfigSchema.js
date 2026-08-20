@@ -53,7 +53,7 @@ export const RUNTIME_CONFIG_DEFINITIONS = Object.freeze({
   },
   dailyDigestCron: {
     label: 'DAILY_DIGEST_CRON',
-    description: 'Cron expression cho daily uptime digest.',
+    description: 'Cron expression for the daily uptime digest.',
     kind: 'cron',
   },
 });

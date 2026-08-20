@@ -16,16 +16,13 @@ function buttonLabels(view) {
   return view.components.flatMap((row) => row.components ?? []).map((component) => component.data?.label);
 }
 
-test('places website controls before database controls and removes Minecraft retry controls', () => {
-  const ids = CONFIG_ITEMS.map((item) => item.id);
-  assert.ok(ids.indexOf('add_website') < ids.indexOf('add_database'));
-  assert.ok(ids.indexOf('remove_website') < ids.indexOf('remove_database'));
-  assert.equal(ids.includes('mcRetryBaseMs'), false);
-  assert.equal(ids.includes('mcMaxRetries'), false);
+test('renders grouped service controls and removes Minecraft retry controls', () => {
+  assert.deepEqual(CONFIG_ITEMS.map((item) => item.id), ['add_service', 'remove_service', 'config']);
+  assert.equal(CONFIG_ITEMS.some((item) => item.id === 'mcRetryBaseMs'), false);
+  assert.equal(CONFIG_ITEMS.some((item) => item.id === 'mcMaxRetries'), false);
 
   const labels = buttonLabels(buildConfigEmbed(0));
-  assert.ok(labels.includes('Add Website'));
-  assert.ok(labels.includes('Remove Website'));
+  assert.deepEqual(labels, ['Add Service', 'Remove Service', 'Config']);
 });
 
 test('builds a bounded website removal selector with pagination controls', () => {

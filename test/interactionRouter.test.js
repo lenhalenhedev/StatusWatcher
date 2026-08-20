@@ -84,11 +84,11 @@ test('routes config buttons, selects and modals to the config handler', async ()
   });
 
   await handler(baseInteraction({
-    customId: 'config:open:add_mc',
+    customId: 'config:open:add_service',
     isButton: () => true,
   }));
   await handler(baseInteraction({
-    customId: 'config:remove_mc:select:0',
+    customId: 'config:remove_service:select',
     isStringSelectMenu: () => true,
   }));
   await handler(baseInteraction({
@@ -97,8 +97,8 @@ test('routes config buttons, selects and modals to the config handler', async ()
   }));
 
   assert.deepEqual(routed, [
-    'config:open:add_mc',
-    'config:remove_mc:select:0',
+    'config:open:add_service',
+    'config:remove_service:select',
     'config:modal:monitorChannelId',
   ]);
 });

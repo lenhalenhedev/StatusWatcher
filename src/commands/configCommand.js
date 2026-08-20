@@ -39,7 +39,14 @@ import { getBotStates } from '../monitors/botMonitor.js';
 import { getMcStates, removeMcState } from '../monitors/mcMonitor.js';
 import { getDatabaseStates, initDatabaseMonitor, removeDatabaseState } from '../monitors/databaseMonitor.js';
 import { getWebsiteStates, initWebsiteMonitor, removeWebsiteState } from '../monitors/websiteMonitor.js';
-import { buildConfigEmbed, buildRemoveMinecraftComponents, buildRemoveWebsiteComponents, buildRemoveDatabaseComponents } from './configView.js';
+import {
+  buildConfigEmbed,
+  buildRemoveMinecraftComponents,
+  buildRemoveWebsiteComponents,
+  buildRemoveDatabaseComponents,
+  buildServiceTypeComponents,
+  buildRuntimeConfigComponents,
+} from './configView.js';
 
 export const data = new SlashCommandBuilder()
   .setName('config')
@@ -281,46 +288,62 @@ export async function handleInteraction(interaction) {
       return;
     }
     if (action !== 'open') return;
-    if (value === 'add_mc') {
-      await interaction.showModal(addMinecraftModal());
+    if (value === 'add_service' || value === 'remove_service') {
+      await interaction.update({
+        content: value === 'add_service' ? 'Select the service type to add.' : 'Select the service type to remove.',
+        components: buildServiceTypeComponents(value),
+      });
       return;
     }
-    if (value === 'add_website') {
-      await interaction.showModal(addWebsiteModal());
+    if (value === 'config') {
+      await interaction.update({
+        content: 'Select the runtime setting to configure.',
+        components: buildRuntimeConfigComponents(),
+      });
       return;
     }
-    if (value === 'add_database') {
-      await interaction.showModal(addDatabaseModal());
-      return;
-    }
-    if (value === 'remove_mc') {
+    return;
+  }
+
+  if (interaction.isStringSelectMenu() && String(interaction.customId) === 'config:add_service:select') {
+    const service = interaction.values[0];
+    if (service === 'mc') await interaction.showModal(addMinecraftModal());
+    else if (service === 'website') await interaction.showModal(addWebsiteModal());
+    else if (service === 'database') await interaction.showModal(addDatabaseModal());
+    else await interaction.update({ content: 'Unsupported service type.', components: buildConfigEmbed(0).components });
+    return;
+  }
+
+  if (interaction.isStringSelectMenu() && String(interaction.customId) === 'config:remove_service:select') {
+    const service = interaction.values[0];
+    if (service === 'mc') {
       const servers = listMinecraftServers();
-      if (servers.length === 0) {
-        await interaction.update({ content: 'No Minecraft servers are configured.', components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('config:back').setLabel('Back').setStyle(ButtonStyle.Secondary))] });
-      } else {
-        await interaction.update({ content: 'Select the Minecraft server to remove.', components: buildRemoveMinecraftComponents(servers) });
-      }
-      return;
-    }
-    if (value === 'remove_website') {
+      await interaction.update({
+        content: servers.length ? 'Select the Minecraft server to remove.' : 'No Minecraft servers are configured.',
+        components: servers.length ? buildRemoveMinecraftComponents(servers) : buildConfigEmbed(0).components,
+      });
+    } else if (service === 'website') {
       const targets = listWebsiteTargets();
-      if (targets.length === 0) {
-        await interaction.update({ content: 'No websites are configured.', components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('config:back').setLabel('Back').setStyle(ButtonStyle.Secondary))] });
-      } else {
-        await interaction.update({ content: 'Select the website to remove.', components: buildRemoveWebsiteComponents(targets) });
-      }
-      return;
-    }
-    if (value === 'remove_database') {
+      await interaction.update({
+        content: targets.length ? 'Select the website to remove.' : 'No websites are configured.',
+        components: targets.length ? buildRemoveWebsiteComponents(targets) : buildConfigEmbed(0).components,
+      });
+    } else if (service === 'database') {
       const targets = listDatabaseTargets();
-      if (targets.length === 0) {
-        await interaction.update({ content: 'No databases are configured.', components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('config:back').setLabel('Back').setStyle(ButtonStyle.Secondary))] });
-      } else {
-        await interaction.update({ content: 'Select the database to remove.', components: buildRemoveDatabaseComponents(targets) });
-      }
-      return;
+      await interaction.update({
+        content: targets.length ? 'Select the database to remove.' : 'No databases are configured.',
+        components: targets.length ? buildRemoveDatabaseComponents(targets) : buildConfigEmbed(0).components,
+      });
+    } else {
+      await interaction.update({ content: 'Unsupported service type.', components: buildConfigEmbed(0).components });
     }
-    if (RUNTIME_CONFIG_DEFINITIONS[value]) await interaction.showModal(scalarModal(value));
+    return;
+  }
+
+  if (interaction.isStringSelectMenu() && String(interaction.customId) === 'config:runtime:select') {
+    const key = interaction.values[0];
+    if (RUNTIME_CONFIG_DEFINITIONS[key]) await interaction.showModal(scalarModal(key));
+    else await interaction.update({ content: 'Unsupported runtime setting.', components: buildConfigEmbed(0).components });
     return;
   }
 

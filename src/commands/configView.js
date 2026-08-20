@@ -11,24 +11,28 @@ import { RUNTIME_CONFIG_DEFINITIONS } from '../config/runtimeConfigSchema.js';
 export const CONFIG_PAGE_SIZE = 23;
 export const CONFIG_NAV_PAGE_SIZE = 20;
 
-export const CONFIG_ITEMS = Object.freeze([
-  { id: 'add_mc', label: 'Add MC', description: 'Add a Minecraft server by name and host:port.' },
-  { id: 'remove_mc', label: 'Remove MC', description: 'Open a dropdown to remove a saved Minecraft server.' },
-  { id: 'add_website', label: 'Add Website', description: 'Monitor a public HTTP or HTTPS website by its response status.' },
-  { id: 'remove_website', label: 'Remove Website', description: 'Open a dropdown to remove a monitored website.' },
-  { id: 'add_database', label: 'Add Database', description: 'Add PostgreSQL, MySQL/MariaDB, Redis, or MongoDB with a connection string.' },
-  { id: 'remove_database', label: 'Remove Database', description: 'Open a dropdown to remove a monitored database.' },
-  ...Object.entries(RUNTIME_CONFIG_DEFINITIONS).map(([id, definition]) => ({
-    id,
-    label: definition.label,
-    description: definition.description,
-  })),
+const SERVICE_OPTIONS = Object.freeze([
+  { label: 'MC', value: 'mc', description: 'Add or remove a Minecraft server.' },
+  { label: 'Website', value: 'website', description: 'Add or remove an HTTP or HTTPS website.' },
+  { label: 'Database', value: 'database', description: 'Add or remove a monitored database.' },
 ]);
 
+export const CONFIG_ITEMS = Object.freeze([
+  { id: 'add_service', label: 'Add Service', description: 'Choose MC, Website, or Database to add a monitored service.' },
+  { id: 'remove_service', label: 'Remove Service', description: 'Choose MC, Website, or Database to remove a monitored service.' },
+  { id: 'config', label: 'Config', description: 'Choose one runtime setting to validate, save to SQLite, and apply immediately.' },
+]);
+
+const RUNTIME_CONFIG_OPTIONS = Object.freeze(Object.entries(RUNTIME_CONFIG_DEFINITIONS).map(([id, definition]) => ({
+  label: definition.label,
+  value: id,
+  description: definition.description,
+}))); 
+
 function displayValue(id) {
-  if (id === 'add_mc' || id === 'remove_mc') return `${config.mcServers.length} server(s)`;
-  if (id === 'add_website' || id === 'remove_website') return `${config.websiteTargets.length} website(s)`;
-  if (id === 'add_database' || id === 'remove_database') return `${config.databaseTargets.length} database(s)`;
+  if (id === 'add_service') return `${config.mcServers.length + config.websiteTargets.length + config.databaseTargets.length} service(s) available`;
+  if (id === 'remove_service') return `${config.mcServers.length + config.websiteTargets.length + config.databaseTargets.length} service(s) configured`;
+  if (id === 'config') return `${RUNTIME_CONFIG_OPTIONS.length} runtime setting(s)`;
   if (id === 'checkIntervalSec') return `${config.checkInterval / 1_000}s`;
   if (id === 'confirmDownThresholdSec') return `${config.confirmDownThresholdMs / 1_000}s`;
   if (id === 'checkIntervalDisplayLogSec') return `${config.checkIntervalDisplayLogSec}s`;
@@ -51,7 +55,7 @@ export function buildConfigEmbed(page = 0) {
     .setColor(0x5865f2)
     .setDescription(
       'The values below are stored in SQLite and applied immediately after saving. '
-      + 'Add/Remove MC manages Minecraft servers; the other settings control monitoring, alerts, digests, and uptime-embed ordering.',
+      + 'Add Service and Remove Service manage MC, Website, and Database targets; Config manages validated runtime settings.',
     )
     .setFooter({ text: `Config page ${safePage + 1}/${maxPage + 1} • SQLite-backed` });
 
@@ -84,11 +88,41 @@ export function buildConfigEmbed(page = 0) {
       pageItems.slice(i, i + 5).map((item) => new ButtonBuilder()
         .setCustomId(`config:open:${item.id}`)
         .setLabel(item.label)
-        .setStyle(['remove_mc', 'remove_website', 'remove_database'].includes(item.id) ? ButtonStyle.Danger : ButtonStyle.Primary)),
+        .setStyle(item.id === 'remove_service' ? ButtonStyle.Danger : ButtonStyle.Primary)),
     ));
   }
 
   return { embed, components, page: safePage, maxPage };
+}
+
+export function buildServiceTypeComponents(action) {
+  if (!['add_service', 'remove_service'].includes(action)) throw new Error('Unsupported service action.');
+  const label = action === 'add_service' ? 'add' : 'remove';
+  return [
+    new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId(`config:${action}:select`)
+        .setPlaceholder(`Select a service type to ${label}.`)
+        .addOptions(SERVICE_OPTIONS),
+    ),
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('config:back').setLabel('Back').setStyle(ButtonStyle.Secondary),
+    ),
+  ];
+}
+
+export function buildRuntimeConfigComponents() {
+  return [
+    new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId('config:runtime:select')
+        .setPlaceholder('Select a runtime setting to configure.')
+        .addOptions(RUNTIME_CONFIG_OPTIONS),
+    ),
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('config:back').setLabel('Back').setStyle(ButtonStyle.Secondary),
+    ),
+  ];
 }
 
 export function buildRemoveWebsiteComponents(targets, page = 0) {

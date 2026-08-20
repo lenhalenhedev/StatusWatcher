@@ -206,14 +206,18 @@ function typeLabel(type) {
 }
 
 function incidentLabel(item) {
-  return Number.isSafeInteger(item?.incidentId) && item.incidentId > 0
-    ? `\nIncident ID: \`${item.incidentId}\``
+  const directId = Number.isSafeInteger(item?.incidentId) && item.incidentId > 0
+    ? item.incidentId
+    : null;
+  const incidentId = directId ?? activeIncidentId(item?.type, item?.id);
+  return Number.isSafeInteger(incidentId) && incidentId > 0
+    ? `\nIncident ID: \`${incidentId}\``
     : '';
 }
 
 /**
  * Build a single summary embed for one or more targets that just went DOWN.
- * @param {Array<{ name: string, type: string, incidentId?: number|null, error?: string|null, important?: boolean }>} items
+ * @param {Array<{ id?: string, name: string, type: string, incidentId?: number|null, error?: string|null, important?: boolean }>} items
  */
 export function buildDownSummaryEmbed(items) {
   const title = items.length === 1
@@ -241,7 +245,7 @@ export function buildDownSummaryEmbed(items) {
 
 /**
  * Build a single summary embed for targets that are still down.
- * @param {Array<{ name: string, type: string, incidentId?: number|null, downSince: number, error?: string|null }>} items
+ * @param {Array<{ id?: string, name: string, type: string, incidentId?: number|null, downSince: number, error?: string|null }>} items
  */
 export function buildStillDownSummaryEmbed(items) {
   const title = items.length === 1
@@ -269,7 +273,7 @@ export function buildStillDownSummaryEmbed(items) {
 
 /**
  * Build a single summary embed for targets that just recovered.
- * @param {Array<{ name: string, type: string, incidentId?: number|null, downSince?: number }>} items
+ * @param {Array<{ id?: string, name: string, type: string, incidentId?: number|null, downSince?: number }>} items
  */
 export function buildUpSummaryEmbed(items) {
   const title = items.length === 1

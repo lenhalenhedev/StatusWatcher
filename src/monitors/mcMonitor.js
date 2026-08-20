@@ -72,8 +72,6 @@ async function checkOne(server, isConnected) {
   const status = await fetchMcStatus({
     ip: server.host,
     port: server.port,
-    maxRetries: config.mcMaxRetries,
-    baseDelayMs: config.mcRetryBaseMs,
     timeoutMs: config.mcStatusTimeoutMs,
   });
 

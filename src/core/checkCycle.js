@@ -3,6 +3,7 @@ import { logError, logInfo } from '../utils/logger.js';
 import { checkBotStatuses } from '../monitors/botMonitor.js';
 import { checkMcServers } from '../monitors/mcMonitor.js';
 import { checkDatabaseTargets } from '../monitors/databaseMonitor.js';
+import { checkWebsiteTargets } from '../monitors/websiteMonitor.js';
 import {
   notifyDownBatch,
   notifyStillDownBatch,
@@ -66,6 +67,18 @@ export function createCheckRunner({ client, getGuild, getConnected }) {
           upItems.push({ name: server.name, type: 'minecraft', downSince: event.downSince });
         } else if (event.type === 'STILL_DOWN' && consumeStillDownReminder(state)) {
           stillItems.push({ name: server.name, type: 'minecraft', downSince: event.downSince, error: event.error });
+        }
+      }
+
+      for (const result of await checkWebsiteTargets(isConnected)) {
+        const { target, state, event } = result;
+        if (isMuted(target.id)) continue;
+        if (event.type === 'DOWN') {
+          downItems.push({ id: target.id, name: target.name, type: 'website', error: event.error, important: false });
+        } else if (event.type === 'UP') {
+          upItems.push({ name: target.name, type: 'website', downSince: event.downSince });
+        } else if (event.type === 'STILL_DOWN' && consumeStillDownReminder(state)) {
+          stillItems.push({ name: target.name, type: 'website', downSince: event.downSince, error: event.error });
         }
       }
 

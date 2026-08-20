@@ -5,6 +5,8 @@ import {
   seedRuntimeConfig,
   listMinecraftServers,
   saveMinecraftServer,
+  listWebsiteTargets,
+  deleteRuntimeConfigValue,
 } from './store/runtimeConfigStore.js';
 import { listDatabaseTargets } from './store/databaseStore.js';
 import {
@@ -60,13 +62,14 @@ const envRuntimeDefaults = {
   confirmDownThresholdSec: process.env.CONFIRM_DOWN_THRESHOLD || '60',
   checkIntervalDisplayLogSec: process.env.CHECK_INTERVAL_DISPLAY_LOG || '90',
   stillDownBackoffSec: envBackoff.join(','),
-  mcRetryBaseMs: process.env.MC_RETRY_BASE_MS || '500',
-  mcMaxRetries: process.env.MC_MAX_RETRIES || '3',
   mcStatusTimeoutMs: process.env.MC_STATUS_TIMEOUT_MS || '10000',
   dailyDigestCron: process.env.DAILY_DIGEST_CRON || '0 1 * * *',
 };
 
 seedRuntimeConfig(envRuntimeDefaults);
+// Remove obsolete retry settings from SQLite so they cannot remain active or visible.
+deleteRuntimeConfigValue('mcRetryBaseMs');
+deleteRuntimeConfigValue('mcMaxRetries');
 
 // One-time migration for the former single Minecraft environment tuple. The
 // new source of truth is minecraft_servers; MC_ENABLE is not consulted again.
@@ -94,6 +97,11 @@ function buildSnapshot() {
   }));
   const firstServer = servers[0] ?? null;
   const databaseTargets = listDatabaseTargets();
+  const websiteTargets = listWebsiteTargets().map((website) => ({
+    id: website.id,
+    name: website.name,
+    url: website.url,
+  }));
   const checkIntervalSec = readValue(raw, 'checkIntervalSec', 30);
   const confirmDownThresholdSec = readValue(raw, 'confirmDownThresholdSec', 60);
   const displayLogSec = readValue(raw, 'checkIntervalDisplayLogSec', 90);
@@ -120,12 +128,13 @@ function buildSnapshot() {
     databaseTargets,
     databaseEnabled: databaseTargets.length > 0,
 
+    websiteTargets,
+    websiteEnabled: websiteTargets.length > 0,
+
     checkInterval: checkIntervalSec * 1_000,
     confirmDownThresholdMs: confirmDownThresholdSec * 1_000,
     checkIntervalDisplayLogSec: displayLogSec,
     stillDownBackoffStepsMs: backoffSec.map((seconds) => seconds * 1_000),
-    mcMaxRetries: readValue(raw, 'mcMaxRetries', 3),
-    mcRetryBaseMs: readValue(raw, 'mcRetryBaseMs', 500),
     mcStatusTimeoutMs: readValue(raw, 'mcStatusTimeoutMs', 10_000),
     dailyDigestCron: readValue(raw, 'dailyDigestCron', '0 1 * * *'),
   };

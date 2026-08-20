@@ -22,7 +22,8 @@ test('rejects malformed Minecraft address and invalid port', () => {
 test('parses integer runtime settings using their declared bounds', () => {
   assert.equal(parseRuntimeConfigValue('checkIntervalSec', '45'), 45);
   assert.throws(() => parseRuntimeConfigValue('checkIntervalSec', '0'));
-  assert.throws(() => parseRuntimeConfigValue('mcMaxRetries', '-1'));
+  assert.throws(() => parseRuntimeConfigValue('mcRetryBaseMs', '500'));
+  assert.throws(() => parseRuntimeConfigValue('mcMaxRetries', '3'));
 });
 
 test('parses comma-separated still-down backoff values', () => {
@@ -39,8 +40,6 @@ test('defines every config button requested by the operator', () => {
     'confirmDownThresholdSec',
     'checkIntervalDisplayLogSec',
     'stillDownBackoffSec',
-    'mcRetryBaseMs',
-    'mcMaxRetries',
     'mcStatusTimeoutMs',
     'dailyDigestCron',
   ]) {

@@ -49,13 +49,46 @@ function downtimeMinutes(id, fallbackTs) {
   return start ? getElapsedMinutes(start) : 0;
 }
 
-export function buildStatusEmbed(botStates, mcStates, page = 0, databaseStates = null) {
+function safeWebsiteUrl(value) {
+  try {
+    const url = new URL(String(value));
+    return `${url.origin}${url.pathname}`.substring(0, 300);
+  } catch {
+    return 'Configured website';
+  }
+}
+
+export function buildStatusEmbed(botStates, mcStates, page = 0, databaseStates = null, websiteStates = null) {
   const { currentPage, totalPages, bots } = getStatusPage(botStates, page);
   const embed = new EmbedBuilder()
     .setTitle('📊 System Status Monitor')
     .setColor(COLOR.INFO)
     .setFooter({ text: `Updated at: ${getTimestampUTC7()} (UTC+7)` })
     .setTimestamp();
+
+  // --- Website section ---
+  const websiteEntries = websiteStates instanceof Map ? [...websiteStates.values()] : [];
+  if (websiteEntries.length > 0) {
+    const websiteLines = websiteEntries.map((websiteState) => {
+      const url = safeWebsiteUrl(websiteState.url);
+      if (websiteState.isConfirmedDown) {
+        const min = downtimeMinutes(websiteState.id, websiteState.confirmedDownAt);
+        const errorText = String(websiteState.lastError ?? 'Website probe failed.').substring(0, 180);
+        const status = Number.isInteger(websiteState.lastStatus) ? ` — HTTP ${websiteState.lastStatus}` : '';
+        return `🔴 **DOWN** — \`${websiteState.name}\`${status} — Down for **${min} min**\nURL: \`${url}\`\nError: ${errorText}\n${buildUptimeLine(websiteState.id)}`;
+      }
+      if (websiteState.lastHealthyAt) {
+        const status = Number.isInteger(websiteState.lastStatus) ? ` — HTTP ${websiteState.lastStatus}` : '';
+        return `🟢 **ONLINE** — \`${websiteState.name}\`${status}\nURL: \`${url}\`\n${buildUptimeLine(websiteState.id)}`;
+      }
+      return `🟡 **CHECKING** — \`${websiteState.name}\`\nURL: \`${url}\``;
+    });
+    embed.addFields({
+      name: '🌐 Websites',
+      value: websiteLines.join('\n\n').substring(0, FIELD_VALUE_LIMIT),
+      inline: false,
+    });
+  }
 
   // --- Database section ---
   const databaseEntries = databaseStates instanceof Map ? [...databaseStates.values()] : [];
@@ -157,6 +190,7 @@ export function buildStatusEmbed(botStates, mcStates, page = 0, databaseStates =
 function typeLabel(type) {
   if (type === 'minecraft') return 'Minecraft Server';
   if (type === 'database') return 'Database';
+  if (type === 'website') return 'Website';
   return 'Server Bot';
 }
 

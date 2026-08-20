@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fetchMcStatus } from '../src/services/mcStatusClient.js';
 
-const BASE = { ip: '1.2.3.4', port: 25565, baseDelayMs: 1, maxRetries: 2 };
+const BASE = { ip: '1.2.3.4', port: 25565 };
 
 test('returns online with normalized data', async () => {
   const statusFn = async () => ({
@@ -26,34 +26,27 @@ test('returns offline (authoritative) without retrying', async () => {
   assert.equal(calls, 1);
 });
 
-test('retries on service error then succeeds', async () => {
-  let calls = 0;
-  const statusFn = async () => {
-    calls++;
-    if (calls < 3) throw new Error('network down');
-    return { online: true, players: { online: 0, max: 10 }, version: { name_clean: 'Spigot' } };
-  };
-  const result = await fetchMcStatus({ ...BASE, statusFn });
-  assert.equal(result.ok, true);
-  assert.equal(result.online, true);
-  assert.equal(calls, 3);
-});
-
-test('reports service failure (not server down) after exhausting retries', async () => {
+test('reports a service failure after one bounded probe', async () => {
   let calls = 0;
   const statusFn = async () => { calls++; throw new Error('timeout'); };
-  const result = await fetchMcStatus({ ...BASE, maxRetries: 2, statusFn });
+  const result = await fetchMcStatus({ ...BASE, statusFn });
   assert.equal(result.ok, false);
   assert.equal(result.error, 'timeout');
-  assert.equal(calls, 3); // initial + 2 retries
+  assert.equal(calls, 1);
+});
+
+test('ignores legacy retry options and leaves retry timing to CHECK_INTERVAL', async () => {
+  let calls = 0;
+  const statusFn = async () => { calls++; throw new Error('network down'); };
+  const result = await fetchMcStatus({ ...BASE, maxRetries: 10, baseDelayMs: 1, statusFn });
+  assert.equal(result.ok, false);
+  assert.equal(calls, 1);
 });
 
 test('bounds a hanging status provider and classifies it as a service failure', async () => {
   let calls = 0;
   const result = await fetchMcStatus({
     ...BASE,
-    maxRetries: 1,
-    baseDelayMs: 1,
     timeoutMs: 5,
     statusFn: () => {
       calls++;
@@ -63,7 +56,7 @@ test('bounds a hanging status provider and classifies it as a service failure', 
 
   assert.equal(result.ok, false);
   assert.match(result.error, /timed out/i);
-  assert.equal(calls, 2);
+  assert.equal(calls, 1);
 });
 
 test('fills sensible defaults for missing player/version fields', async () => {

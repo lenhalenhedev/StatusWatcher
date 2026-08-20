@@ -20,6 +20,14 @@ db.exec(`
     updated_at INTEGER NOT NULL,
     UNIQUE (host, port)
   );
+
+  CREATE TABLE IF NOT EXISTS website_targets (
+    id         TEXT PRIMARY KEY,
+    name       TEXT NOT NULL,
+    url        TEXT NOT NULL UNIQUE,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
 `);
 
 const stmtListConfig = db.prepare('SELECT key, value FROM runtime_config ORDER BY key');
@@ -46,6 +54,17 @@ const stmtInsertMc = db.prepare(`
     updated_at = excluded.updated_at
 `);
 const stmtDeleteMc = db.prepare('DELETE FROM minecraft_servers WHERE id = ?');
+const stmtListWebsites = db.prepare('SELECT * FROM website_targets ORDER BY created_at, id');
+const stmtGetWebsite = db.prepare('SELECT * FROM website_targets WHERE id = ?');
+const stmtInsertWebsite = db.prepare(`
+  INSERT INTO website_targets (id, name, url, created_at, updated_at)
+  VALUES (@id, @name, @url, @now, @now)
+  ON CONFLICT (id) DO UPDATE SET
+    name = excluded.name,
+    url = excluded.url,
+    updated_at = excluded.updated_at
+`);
+const stmtDeleteWebsite = db.prepare('DELETE FROM website_targets WHERE id = ?');
 
 export function listRuntimeConfig() {
   try {
@@ -130,6 +149,42 @@ export function deleteMinecraftServer(id) {
     stmtDeleteMc.run(id);
   } catch (err) {
     logError('RuntimeConfigStore.deleteMinecraftServer', err);
+    throw err;
+  }
+}
+
+export function listWebsiteTargets() {
+  try {
+    return stmtListWebsites.all();
+  } catch (err) {
+    logError('RuntimeConfigStore.listWebsiteTargets', err);
+    return [];
+  }
+}
+
+export function getWebsiteTarget(id) {
+  try {
+    return stmtGetWebsite.get(id) ?? null;
+  } catch (err) {
+    logError('RuntimeConfigStore.getWebsiteTarget', err);
+    return null;
+  }
+}
+
+export function saveWebsiteTarget({ id, name, url }) {
+  try {
+    stmtInsertWebsite.run({ id, name, url, now: Date.now() });
+  } catch (err) {
+    logError('RuntimeConfigStore.saveWebsiteTarget', err);
+    throw err;
+  }
+}
+
+export function deleteWebsiteTarget(id) {
+  try {
+    stmtDeleteWebsite.run(id);
+  } catch (err) {
+    logError('RuntimeConfigStore.deleteWebsiteTarget', err);
     throw err;
   }
 }

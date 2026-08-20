@@ -12,12 +12,16 @@ import {
 } from 'discord.js';
 import runtimeConfig, { reloadRuntimeConfig, serializeRuntimeConfigValue } from '../config.js';
 import { parseMinecraftAddress, RUNTIME_CONFIG_DEFINITIONS } from '../config/runtimeConfigSchema.js';
+import { normalizeWebsiteUrl } from '../services/websiteStatusClient.js';
 import { parseDatabaseConnectionString, parseDatabaseName, parseDatabaseSsl, DATABASE_CERTIFICATE_EXPIRY_MS, DATABASE_MAX_CERTIFICATE_BYTES } from '../config/databaseSchema.js';
 import {
   deleteMinecraftServer,
   listMinecraftServers,
   saveMinecraftServer,
   setRuntimeConfigValue,
+  deleteWebsiteTarget,
+  listWebsiteTargets,
+  saveWebsiteTarget,
 } from '../store/runtimeConfigStore.js';
 import {
   createCertificateRequest,
@@ -34,7 +38,8 @@ import { refreshStatusMessage } from '../services/statusMessage.js';
 import { getBotStates } from '../monitors/botMonitor.js';
 import { getMcStates, removeMcState } from '../monitors/mcMonitor.js';
 import { getDatabaseStates, initDatabaseMonitor, removeDatabaseState } from '../monitors/databaseMonitor.js';
-import { buildConfigEmbed, buildRemoveMinecraftComponents, buildRemoveDatabaseComponents } from './configView.js';
+import { getWebsiteStates, initWebsiteMonitor, removeWebsiteState } from '../monitors/websiteMonitor.js';
+import { buildConfigEmbed, buildRemoveMinecraftComponents, buildRemoveWebsiteComponents, buildRemoveDatabaseComponents } from './configView.js';
 
 export const data = new SlashCommandBuilder()
   .setName('config')
@@ -49,8 +54,6 @@ function scalarValue(key) {
   if (key === 'confirmDownThresholdSec') return String(runtimeConfig.confirmDownThresholdMs / 1_000);
   if (key === 'checkIntervalDisplayLogSec') return String(runtimeConfig.checkIntervalDisplayLogSec);
   if (key === 'stillDownBackoffSec') return runtimeConfig.stillDownBackoffStepsMs.map((value) => value / 1_000).join(',');
-  if (key === 'mcRetryBaseMs') return String(runtimeConfig.mcRetryBaseMs);
-  if (key === 'mcMaxRetries') return String(runtimeConfig.mcMaxRetries);
   if (key === 'mcStatusTimeoutMs') return String(runtimeConfig.mcStatusTimeoutMs);
   if (key === 'dailyDigestCron') return runtimeConfig.dailyDigestCron;
   return runtimeConfig[key] || '';
@@ -76,6 +79,28 @@ function addMinecraftModal() {
     .setCustomId('config:modal:add_mc')
     .setTitle('Add Minecraft Server')
     .addComponents(new ActionRowBuilder().addComponents(name), new ActionRowBuilder().addComponents(address));
+}
+
+function addWebsiteModal() {
+  const name = new TextInputBuilder()
+    .setCustomId('name')
+    .setLabel('Website Name')
+    .setPlaceholder('Public status page')
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMaxLength(100);
+  const url = new TextInputBuilder()
+    .setCustomId('url')
+    .setLabel('HTTP or HTTPS URL')
+    .setPlaceholder('https://example.com/health')
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMaxLength(2_048);
+
+  return new ModalBuilder()
+    .setCustomId('config:modal:add_website')
+    .setTitle('Add Website')
+    .addComponents(new ActionRowBuilder().addComponents(name), new ActionRowBuilder().addComponents(url));
 }
 
 function addDatabaseModal() {
@@ -130,11 +155,13 @@ function scalarModal(key) {
 
 async function refreshAfterConfigChange(interaction) {
   reloadRuntimeConfig();
+  initWebsiteMonitor();
   await refreshStatusMessage(interaction.client, {
     channelId: runtimeConfig.monitorChannelId,
     getBotStates,
     getMcStates,
     getDatabaseStates,
+    getWebsiteStates,
   });
 }
 
@@ -198,7 +225,9 @@ export async function handleCertificateMessage(message) {
       getBotStates,
       getMcStates,
       getDatabaseStates,
+      getWebsiteStates,
     });
+    initWebsiteMonitor();
     await message.reply('Certificate saved securely and database monitoring was refreshed.');
   } catch {
     await message.reply('Certificate was not saved. Check that it is a valid CA certificate under 512 KB and try again.');
@@ -243,6 +272,10 @@ export async function handleInteraction(interaction) {
       await interaction.update({ content: 'Select the database to remove.', components: buildRemoveDatabaseComponents(listDatabaseTargets(), Number(value)) });
       return;
     }
+    if (action === 'remove_website_page') {
+      await interaction.update({ content: 'Select the website to remove.', components: buildRemoveWebsiteComponents(listWebsiteTargets(), Number(value)) });
+      return;
+    }
     if (action === 'back') {
       await interaction.update({ content: '', embeds: [buildConfigEmbed(0).embed], components: buildConfigEmbed(0).components });
       return;
@@ -250,6 +283,10 @@ export async function handleInteraction(interaction) {
     if (action !== 'open') return;
     if (value === 'add_mc') {
       await interaction.showModal(addMinecraftModal());
+      return;
+    }
+    if (value === 'add_website') {
+      await interaction.showModal(addWebsiteModal());
       return;
     }
     if (value === 'add_database') {
@@ -262,6 +299,15 @@ export async function handleInteraction(interaction) {
         await interaction.update({ content: 'No Minecraft servers are configured.', components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('config:back').setLabel('Back').setStyle(ButtonStyle.Secondary))] });
       } else {
         await interaction.update({ content: 'Select the Minecraft server to remove.', components: buildRemoveMinecraftComponents(servers) });
+      }
+      return;
+    }
+    if (value === 'remove_website') {
+      const targets = listWebsiteTargets();
+      if (targets.length === 0) {
+        await interaction.update({ content: 'No websites are configured.', components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('config:back').setLabel('Back').setStyle(ButtonStyle.Secondary))] });
+      } else {
+        await interaction.update({ content: 'Select the website to remove.', components: buildRemoveWebsiteComponents(targets) });
       }
       return;
     }
@@ -296,6 +342,24 @@ export async function handleInteraction(interaction) {
     return;
   }
 
+  if (interaction.isStringSelectMenu() && String(interaction.customId).startsWith('config:remove_website:select')) {
+    await interaction.deferUpdate();
+    const id = interaction.values[0];
+    const target = listWebsiteTargets().find((item) => item.id === id);
+    if (!target) {
+      const view = buildConfigEmbed(0);
+      await interaction.editReply({ content: 'That website no longer exists.', embeds: [view.embed], components: view.components });
+      return;
+    }
+    deleteWebsiteTarget(id);
+    deleteTarget(id);
+    removeWebsiteState(id);
+    await refreshAfterConfigChange(interaction);
+    const view = buildConfigEmbed(0);
+    await interaction.editReply({ content: `Removed website: ${target.name}`, embeds: [view.embed], components: view.components });
+    return;
+  }
+
   if (interaction.isStringSelectMenu() && String(interaction.customId).startsWith('config:remove_database:select')) {
     await interaction.deferUpdate();
     const id = interaction.values[0];
@@ -327,6 +391,18 @@ export async function handleInteraction(interaction) {
         registerTarget(id, name, { type: 'minecraft' });
         await refreshAfterConfigChange(interaction);
         await interaction.editReply({ content: `Minecraft server **${name}** was added and is now monitored.` });
+        return;
+      }
+
+      if (key === 'add_website') {
+        const name = interaction.fields.getTextInputValue('name').trim();
+        if (!name || name.length > 100) throw new Error('Website name is invalid.');
+        const url = normalizeWebsiteUrl(interaction.fields.getTextInputValue('url'));
+        const id = `website_${randomUUID()}`;
+        saveWebsiteTarget({ id, name, url });
+        registerTarget(id, name, { type: 'website' });
+        await refreshAfterConfigChange(interaction);
+        await interaction.editReply({ content: `Website **${name}** was added and is now monitored.` });
         return;
       }
 

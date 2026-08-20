@@ -44,20 +44,6 @@ export const RUNTIME_CONFIG_DEFINITIONS = Object.freeze({
     description: 'STILL DOWN reminder intervals in seconds, for example 90,300,1800.',
     kind: 'backoff',
   },
-  mcRetryBaseMs: {
-    label: 'MC_RETRY_BASE_MS',
-    description: 'Base Minecraft retry delay, in milliseconds.',
-    kind: 'integer',
-    min: 0,
-    max: 600_000,
-  },
-  mcMaxRetries: {
-    label: 'MC_MAX_RETRIES',
-    description: 'Maximum retries when a Minecraft probe fails.',
-    kind: 'integer',
-    min: 0,
-    max: 50,
-  },
   mcStatusTimeoutMs: {
     label: 'MC_STATUS_TIMEOUT_MS',
     description: 'Timeout for each Minecraft probe, in milliseconds.',

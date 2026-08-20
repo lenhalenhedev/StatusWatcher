@@ -17,11 +17,11 @@ function enqueue(operation) {
   return next;
 }
 
-function buildStatusPayload(botStates, mcStates, databaseStates, page) {
+function buildStatusPayload(botStates, mcStates, databaseStates, websiteStates, page) {
   const totalPages = getStatusPageCount(botStates);
   const currentPage = Math.min(Math.max(page, 0), totalPages - 1);
   return {
-    embeds: [buildStatusEmbed(botStates, mcStates, currentPage, databaseStates)],
+    embeds: [buildStatusEmbed(botStates, mcStates, currentPage, databaseStates, websiteStates)],
     components: buildStatusComponents(currentPage, totalPages),
   };
 }
@@ -44,14 +44,15 @@ async function fetchTrackedMessage(channel, channelId) {
   }
 }
 
-export function refreshStatusMessage(client, { channelId, getBotStates, getMcStates, getMcState, getDatabaseStates, forceNew = false }) {
+export function refreshStatusMessage(client, { channelId, getBotStates, getMcStates, getMcState, getDatabaseStates, getWebsiteStates, forceNew = false }) {
   return enqueue(async () => {
     const channel = await fetchMonitorChannel(client, channelId);
     if (!channel) return null;
 
     const mcStates = getMcStates ? getMcStates() : getMcState?.();
     const databaseStates = getDatabaseStates ? getDatabaseStates() : null;
-    const payload = buildStatusPayload(getBotStates(), mcStates, databaseStates, forceNew ? 0 : currentMonitorPage);
+    const websiteStates = getWebsiteStates ? getWebsiteStates() : null;
+    const payload = buildStatusPayload(getBotStates(), mcStates, databaseStates, websiteStates, forceNew ? 0 : currentMonitorPage);
     let message = forceNew ? null : await fetchTrackedMessage(channel, channelId);
 
     if (forceNew) {
@@ -73,7 +74,7 @@ export function refreshStatusMessage(client, { channelId, getBotStates, getMcSta
   });
 }
 
-export function updateStatusComponent(interaction, { getBotStates, getMcStates, getMcState, getDatabaseStates }) {
+export function updateStatusComponent(interaction, { getBotStates, getMcStates, getMcState, getDatabaseStates, getWebsiteStates }) {
   return enqueue(async () => {
     const parsed = parseStatusComponentId(interaction.customId);
     if (!parsed) {
@@ -104,13 +105,14 @@ export function updateStatusComponent(interaction, { getBotStates, getMcStates, 
     currentMonitorPage = nextPage;
     const mcStates = getMcStates ? getMcStates() : getMcState?.();
     const databaseStates = getDatabaseStates ? getDatabaseStates() : null;
-    await interaction.update(buildStatusPayload(getBotStates(), mcStates, databaseStates, nextPage));
+    const websiteStates = getWebsiteStates ? getWebsiteStates() : null;
+    await interaction.update(buildStatusPayload(getBotStates(), mcStates, databaseStates, websiteStates, nextPage));
     return true;
   });
 }
 
-export function getStatusMessagePayload(botStates, mcState, page = 0, databaseStates = null) {
-  return buildStatusPayload(botStates, mcState, databaseStates, page);
+export function getStatusMessagePayload(botStates, mcState, page = 0, databaseStates = null, websiteStates = null) {
+  return buildStatusPayload(botStates, mcState, databaseStates, websiteStates, page);
 }
 
 export function resetStatusPage() {

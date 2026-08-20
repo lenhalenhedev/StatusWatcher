@@ -7,6 +7,7 @@ import { closeDatabase } from './utils/db.js';
 import { initBotMonitor, getBotStates, handleMemberAdd, handleMemberRemove, refreshBotRoleFlags } from './monitors/botMonitor.js';
 import { initMcMonitor, checkMcServers, getMcStates, getMcState } from './monitors/mcMonitor.js';
 import { initDatabaseMonitor, getDatabaseStates, checkDatabaseTargets, closeDatabaseMonitor } from './monitors/databaseMonitor.js';
+import { initWebsiteMonitor, getWebsiteStates, checkWebsiteTargets } from './monitors/websiteMonitor.js';
 import { cleanLogChannel } from './handlers/notifier.js';
 import { postDailyDigest } from './handlers/digest.js';
 import { createCheckRunner } from './core/checkCycle.js';
@@ -120,6 +121,7 @@ function doRefresh() {
     getMcStates,
     getMcState,
     getDatabaseStates,
+    getWebsiteStates,
   }).catch((err) => {
     logError('Index.refreshMonitorEmbed', err);
     return null;
@@ -151,6 +153,7 @@ subscribeRuntimeConfig(() => {
   scheduleDailyDigest();
   initMcMonitor();
   initDatabaseMonitor();
+  initWebsiteMonitor();
   if (state.monitoredGuild) refreshBotRoleFlags(state.monitoredGuild);
   void refreshMonitorEmbed();
 });
@@ -202,6 +205,15 @@ client.once('clientReady', async () => {
     }
   }
 
+  if (config.websiteEnabled) {
+    try {
+      initWebsiteMonitor();
+      await checkWebsiteTargets(state.isConnected);
+    } catch (err) {
+      logError('Index.clientReady.websiteMonitor', err);
+    }
+  }
+
   try {
     await initBotMonitor(state.monitoredGuild);
   } catch (err) {
@@ -219,6 +231,10 @@ client.once('clientReady', async () => {
       ...(config.databaseEnabled ? {
         databasesOnline: [...getDatabaseStates().values()].filter((databaseState) => databaseState.lastHealthyAt).length,
         databasesDown: [...getDatabaseStates().values()].filter((databaseState) => databaseState.isConfirmedDown).length,
+      } : {}),
+      ...(config.websiteEnabled ? {
+        websitesOnline: [...getWebsiteStates().values()].filter((websiteState) => websiteState.lastHealthyAt && !websiteState.isConfirmedDown).length,
+        websitesDown: [...getWebsiteStates().values()].filter((websiteState) => websiteState.isConfirmedDown).length,
       } : {}),
     }));
   } catch (err) {

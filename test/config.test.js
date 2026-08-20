@@ -87,8 +87,8 @@ test('operational defaults are available until values are saved through /config'
   const config = loadConfigSnapshot();
   assert.equal(config.checkInterval, 30_000);
   assert.equal(config.confirmDownThresholdMs, 60_000);
-  assert.equal(config.mcRetryBaseMs, 500);
-  assert.equal(config.mcMaxRetries, 3);
+  assert.equal(Object.hasOwn(config, 'mcRetryBaseMs'), false);
+  assert.equal(Object.hasOwn(config, 'mcMaxRetries'), false);
   assert.equal(config.mcStatusTimeoutMs, 10_000);
   assert.equal(config.dailyDigestCron, '0 1 * * *');
 });

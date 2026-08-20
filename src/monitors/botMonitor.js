@@ -1,6 +1,7 @@
 import config from '../config.js';
 import { logError, logInfo } from '../utils/logger.js';
 import { getElapsedSeconds } from '../utils/timeUtils.js';
+import { recordProbeEvidence } from '../services/probeEvidenceService.js';
 import {
   registerTarget,
   recordDown,
@@ -242,12 +243,14 @@ export async function checkBotStatuses(guild, isConnected) {
 
       state.name = memberName(member);
       state.hasImportantRole = memberHasImportantRole(member);
+      const startedAt = Date.now();
       const isCurrentlyOffline = !member.presence || member.presence.status === 'offline';
 
       if (isCurrentlyOffline) {
+        let evidenceEventType = null;
         if (state.firstSeenOffline === null) {
           state.firstSeenOffline = Date.now();
-            logInfo('BotMonitor', `${state.name} offline - starting ${config.confirmDownThresholdMs / 1_000}s threshold...`);
+          logInfo('BotMonitor', `${state.name} offline - starting ${config.confirmDownThresholdMs / 1_000}s threshold...`);
         } else if (!state.isConfirmedDown) {
           const elapsedSec = getElapsedSeconds(state.firstSeenOffline);
           if (elapsedSec >= config.confirmDownThresholdMs / 1_000) {
@@ -258,20 +261,47 @@ export async function checkBotStatuses(guild, isConnected) {
             recordDown(id, state.firstSeenOffline);
             const downSince = getOpenSessionStart(id) ?? state.confirmedDownAt;
             events.push({ type: 'DOWN', botId: id, state, downSince });
+            evidenceEventType = 'DOWN';
             logInfo('BotMonitor', `${state.name} confirmed DOWN after ${elapsedSec}s.`);
           }
         } else {
           const downSince = getOpenSessionStart(id) ?? state.confirmedDownAt;
           events.push({ type: 'STILL_DOWN', botId: id, state, downSince });
+          evidenceEventType = 'STILL_DOWN';
         }
+        recordProbeEvidence({
+          serviceId: id,
+          serviceType: 'bot',
+          observedAt: Date.now(),
+          durationMs: Date.now() - startedAt,
+          success: false,
+          eventType: evidenceEventType,
+          errorCategory: 'UNKNOWN',
+        });
       } else if (state.isConfirmedDown) {
         const downSince = getOpenSessionStart(id) ?? state.confirmedDownAt;
         recordUp(id);
         events.push({ type: 'UP', botId: id, state, downSince });
         resetState(state);
+        recordProbeEvidence({
+          serviceId: id,
+          serviceType: 'bot',
+          observedAt: Date.now(),
+          durationMs: Date.now() - startedAt,
+          success: true,
+          eventType: 'UP',
+        });
         logInfo('BotMonitor', `${state.name} recovered UP.`);
       } else {
         resetState(state);
+        recordProbeEvidence({
+          serviceId: id,
+          serviceType: 'bot',
+          observedAt: Date.now(),
+          durationMs: Date.now() - startedAt,
+          success: true,
+          eventType: 'ONLINE',
+        });
       }
     } catch (err) {
       logError('BotMonitor.checkBotStatuses.member', err);

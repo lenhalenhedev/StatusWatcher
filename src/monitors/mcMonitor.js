@@ -2,6 +2,7 @@ import config from '../config.js';
 import { logInfo } from '../utils/logger.js';
 import { registerTarget, recordDown, recordUp, getOpenSessionStart } from '../utils/uptimeTracker.js';
 import { fetchMcStatus } from '../services/mcStatusClient.js';
+import { recordProbeEvidence } from '../services/probeEvidenceService.js';
 
 // Kept for compatibility with legacy consumers; new servers receive their own
 // stable ID from the minecraft_servers SQLite table.
@@ -65,10 +66,24 @@ export function initMcMonitor() {
   }
 }
 
+function recordMcEvidence(server, startedAt, status, event) {
+  recordProbeEvidence({
+    serviceId: server.id,
+    serviceType: 'minecraft',
+    observedAt: Date.now(),
+    durationMs: Date.now() - startedAt,
+    success: Boolean(status?.ok && status?.online),
+    statusCode: status?.ok ? 200 : null,
+    eventType: event?.type,
+    errorCategory: status?.ok && status?.online ? null : 'MINECRAFT_CONNECTION_FAILED',
+  });
+}
+
 async function checkOne(server, isConnected) {
   const state = stateFor(server);
   if (!isConnected) return { server, state, event: { type: null } };
 
+  const startedAt = Date.now();
   const status = await fetchMcStatus({
     ip: server.host,
     port: server.port,
@@ -77,7 +92,9 @@ async function checkOne(server, isConnected) {
 
   if (!status.ok) {
     state.lastError = `mcstatus.io unavailable: ${status.error}`;
-    return { server, state, event: { type: null } };
+    const event = { type: null };
+    recordMcEvidence(server, startedAt, status, event);
+    return { server, state, event };
   }
 
   if (status.online) {
@@ -93,11 +110,15 @@ async function checkOne(server, isConnected) {
       state.lastStillDownNotifiedAt = null;
       state.stillDownRemindersSent = 0;
       logInfo('McMonitor', `${server.name} recovered to UP.`);
-      return { server, state, event: { type: 'UP', downSince } };
+      const event = { type: 'UP', downSince };
+      recordMcEvidence(server, startedAt, status, event);
+      return { server, state, event };
     }
 
     state.firstSeenOffline = null;
-    return { server, state, event: { type: 'ONLINE' } };
+    const event = { type: 'ONLINE' };
+    recordMcEvidence(server, startedAt, status, event);
+    return { server, state, event };
   }
 
   state.lastPingData = null;
@@ -116,15 +137,21 @@ async function checkOne(server, isConnected) {
     recordDown(server.id, state.firstSeenOffline);
     const downSince = getOpenSessionStart(server.id) ?? state.confirmedDownAt;
     logInfo('McMonitor', `${server.name} confirmed DOWN after ${Math.floor(elapsed / 1_000)}s.`);
-    return { server, state, event: { type: 'DOWN', error: state.lastError, downSince } };
+    const event = { type: 'DOWN', error: state.lastError, downSince };
+    recordMcEvidence(server, startedAt, status, event);
+    return { server, state, event };
   }
 
   if (state.isConfirmedDown) {
     const downSince = getOpenSessionStart(server.id) ?? state.confirmedDownAt;
-    return { server, state, event: { type: 'STILL_DOWN', error: state.lastError, downSince } };
+    const event = { type: 'STILL_DOWN', error: state.lastError, downSince };
+    recordMcEvidence(server, startedAt, status, event);
+    return { server, state, event };
   }
 
-  return { server, state, event: { type: null } };
+  const event = { type: null };
+  recordMcEvidence(server, startedAt, status, event);
+  return { server, state, event };
 }
 
 /** Check every configured server once. */

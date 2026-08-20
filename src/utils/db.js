@@ -100,13 +100,16 @@ db.exec(`
   );
 
   CREATE TABLE IF NOT EXISTS latency_samples (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    service_id   TEXT NOT NULL,
-    service_type TEXT NOT NULL,
-    observed_at  INTEGER NOT NULL,
-    duration_ms  INTEGER NOT NULL,
-    success      INTEGER NOT NULL CHECK (success IN (0, 1)),
-    status_code  INTEGER
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    service_id     TEXT NOT NULL,
+    service_type   TEXT NOT NULL,
+    observed_at    INTEGER NOT NULL,
+    duration_ms    INTEGER NOT NULL,
+    success        INTEGER NOT NULL CHECK (success IN (0, 1)),
+    status_code    INTEGER,
+    probe_status   TEXT NOT NULL DEFAULT 'ONLINE',
+    error_category TEXT,
+    retry_index    INTEGER NOT NULL DEFAULT 0
   );
 
   CREATE TABLE IF NOT EXISTS service_dependencies (
@@ -175,6 +178,19 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_slo_service ON slos (service_type, service_id);
   CREATE INDEX IF NOT EXISTS idx_tls_service_time ON tls_certificate_snapshots (service_type, service_id, observed_at);
 `);
+
+// Backward-compatible migration for databases created before probe evidence
+// metadata was added. Column names are fixed constants, never user input.
+const latencyColumns = new Set(db.prepare('PRAGMA table_info(latency_samples)').all().map((column) => column.name));
+if (!latencyColumns.has('probe_status')) {
+  db.exec("ALTER TABLE latency_samples ADD COLUMN probe_status TEXT NOT NULL DEFAULT 'ONLINE'");
+}
+if (!latencyColumns.has('error_category')) {
+  db.exec('ALTER TABLE latency_samples ADD COLUMN error_category TEXT');
+}
+if (!latencyColumns.has('retry_index')) {
+  db.exec('ALTER TABLE latency_samples ADD COLUMN retry_index INTEGER NOT NULL DEFAULT 0');
+}
 
 /** Close the database handle gracefully (used during shutdown). */
 export function closeDatabase() {

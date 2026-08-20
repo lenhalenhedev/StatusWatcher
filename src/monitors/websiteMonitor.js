@@ -3,7 +3,7 @@ import { logInfo } from '../utils/logger.js';
 import { registerTarget, recordDown, recordUp, getOpenSessionStart } from '../utils/uptimeTracker.js';
 import { listWebsiteTargets } from '../store/runtimeConfigStore.js';
 import { checkWebsite } from '../services/websiteStatusClient.js';
-import { appendLatencySample } from '../store/latencyStore.js';
+import { recordProbeEvidence } from '../services/probeEvidenceService.js';
 
 const states = new Map();
 
@@ -44,6 +44,14 @@ function safeError(resultOrError) {
   if (code === 'FORBIDDEN_ADDRESS') return 'Address not allowed';
   if (code === 'INVALID_RESPONSE') return 'Invalid HTTP response';
   return 'Network request failed';
+}
+
+function safeProbeCategory(resultOrError) {
+  const code = resultOrError?.code;
+  if (code === 'HTTP_ERROR') return 'HTTP_STATUS_FAILURE';
+  if (code === 'TIMEOUT') return 'HTTP_TIMEOUT';
+  if (code === 'DNS_ERROR') return 'DNS_FAILURE';
+  return null;
 }
 
 function onlineResult(state, result, now = Date.now()) {
@@ -117,29 +125,31 @@ export async function checkWebsiteTargets(isConnected, { checkWebsiteImpl = chec
     const probeStartedAt = Date.now();
     try {
       const result = await checkWebsiteImpl(target);
-      appendLatencySample({
+      const event = result?.ok ? onlineResult(state, result) : offlineResult(state, result);
+      recordProbeEvidence({
         serviceId: target.id,
         serviceType: 'website',
         observedAt: Date.now(),
         durationMs: result?.durationMs ?? (Date.now() - probeStartedAt),
         success: Boolean(result?.ok),
         statusCode: result?.status,
+        eventType: event.type,
+        errorCategory: result?.ok ? null : safeProbeCategory(result),
       });
-      return {
-        target,
-        state,
-        event: result?.ok ? onlineResult(state, result) : offlineResult(state, result),
-      };
+      return { target, state, event };
     } catch (error) {
-      appendLatencySample({
+      const event = offlineResult(state, error);
+      recordProbeEvidence({
         serviceId: target.id,
         serviceType: 'website',
         observedAt: Date.now(),
         durationMs: Date.now() - probeStartedAt,
         success: false,
         statusCode: error?.status,
+        eventType: event.type,
+        errorCategory: safeProbeCategory(error),
       });
-      return { target, state, event: offlineResult(state, error) };
+      return { target, state, event };
     }
   }));
 }

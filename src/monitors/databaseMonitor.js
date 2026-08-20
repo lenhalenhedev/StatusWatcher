@@ -11,6 +11,7 @@ import { registerTarget, recordDown, recordUp, getOpenSessionStart } from '../ut
 import { getDatabaseSecretBundle, listDatabaseTargets } from '../store/databaseStore.js';
 import { classifyDatabaseError, sanitizeDatabaseUriForDriver } from '../config/databaseSchema.js';
 import { createDatabaseState, markOnline, markOffline } from './databaseState.js';
+import { recordProbeEvidence } from '../services/probeEvidenceService.js';
 
 const states = new Map();
 const CERT_DIR = join(process.cwd(), 'data', '.database-certs');
@@ -228,11 +229,32 @@ export async function checkDatabaseTargets(isConnected) {
   initDatabaseMonitor();
   const results = await Promise.all(listDatabaseTargets().map(async (target) => {
     const state = stateFor(target);
+    const startedAt = Date.now();
     try {
-      return { target, state, event: await probe(state).then(() => onlineResult(state)) };
+      await probe(state);
+      const event = onlineResult(state);
+      recordProbeEvidence({
+        serviceId: target.id,
+        serviceType: 'database',
+        observedAt: Date.now(),
+        durationMs: Date.now() - startedAt,
+        success: true,
+        eventType: event.type,
+      });
+      return { target, state, event };
     } catch (error) {
       await closeClient(state);
-      return { target, state, event: offlineResult(state, error) };
+      const event = offlineResult(state, error);
+      recordProbeEvidence({
+        serviceId: target.id,
+        serviceType: 'database',
+        observedAt: Date.now(),
+        durationMs: Date.now() - startedAt,
+        success: false,
+        eventType: event.type,
+        errorCategory: classifyDatabaseError(error),
+      });
+      return { target, state, event };
     }
   }));
   return results;

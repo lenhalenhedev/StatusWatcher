@@ -9,7 +9,7 @@ The Discord log alert showed only:
 - `EternalGhost — Still DOWN`
 - `Server Bot — down for 1 min`
 
-Neither the DOWN nor STILL_DOWN alert exposed the `incident_id` required by `/acknowledge`.
+Neither the DOWN nor STILL_DOWN alert exposed the durable incident identifier needed for incident correlation and history. The current `/acknowledge` flow does not require operators to enter that identifier; it uses a service dropdown.
 
 ## Audit findings
 
@@ -31,7 +31,7 @@ Server Bot
 Incident ID: `<id>`
 ```
 
-The STILL_DOWN alert contains the same durable ID. The ID remains available while the incident is `ACKNOWLEDGED`; acknowledgment suppresses repeated STILL_DOWN communication but does not remove or replace the incident. The same ID is retained for UP recovery correlation.
+The STILL_DOWN alert contains the same durable ID. The ID remains available while the incident is `ACKNOWLEDGED`; selecting the service suppresses repeated STILL_DOWN communication but does not remove or replace the incident. The same ID is retained for UP recovery correlation.
 
 The final renderer fallback is fail-safe. It accepts only a positive safe integer from the payload or an active SQLite incident lookup. It does not print raw endpoints, credentials, exception text, or other sensitive values.
 

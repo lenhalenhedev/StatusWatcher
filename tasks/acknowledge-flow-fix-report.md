@@ -2,7 +2,7 @@
 
 ## Previous behavior and root cause
 
-`/acknowledge` changed an incident from `OPEN` to `ACKNOWLEDGED`, but the monitoring cycle did not consult that state when deciding whether to deliver `STILL_DOWN` reminders. The Discord log embed also omitted the SQLite incident ID, even though `/acknowledge` requires that ID as its argument. This made acknowledgment ambiguous and made repeated reminders continue after acknowledgment.
+`/acknowledge` changed an incident from `OPEN` to `ACKNOWLEDGED`, but the monitoring cycle did not consult that state when deciding whether to deliver `STILL_DOWN` reminders. The command previously required a SQLite incident ID, which made the operator locate and copy an internal identifier from an alert. The command now presents a service dropdown and resolves the current open incident by `(service_type, service_id)`.
 
 ## Correct behavior
 
@@ -16,7 +16,7 @@ When the next successful probe emits `UP`, the incident transitions to `RESOLVED
 |---|---|
 | `src/core/checkCycle.js` | Retains the incident transition result, adds `incidentId` to DOWN/STILL_DOWN/UP alert items, and suppresses STILL_DOWN delivery for acknowledged incidents only. |
 | `src/incidents/incidentManager.js` | Preserves `ACKNOWLEDGED` across duplicate DOWN transitions instead of silently reverting it to OPEN. UP still always resolves the incident. |
-| `src/handlers/embedBuilder.js` | Displays `Incident ID: \\`<id>\\`` in DOWN, STILL_DOWN, and UP summary fields. |
+| `src/handlers/embedBuilder.js` | Displays the durable incident ID in DOWN, STILL_DOWN, and UP summary fields for incident correlation and history. |
 | `src/commands/acknowledge.js` | Explains that reminders are suppressed, monitoring continues, and UP automatically resolves the incident. |
 | `test/incidentAcknowledgementFlow.test.js` | Adds regression coverage for acknowledgment semantics, incident ID propagation, and recovery. |
 | `test/incidentCommands.test.js` | Verifies the command response documents the behavior accurately. |
@@ -33,4 +33,4 @@ When the next successful probe emits `UP`, the incident transitions to `RESOLVED
 | Changed-file sensitive-value scan | **Passed** |
 | Runtime | **Node.js v24.19.0 via NVM** |
 
-The fix does not add raw endpoint, credential, or upstream-error data to logs or Discord responses. Incident IDs are bounded SQLite integer identifiers and are safe to expose to administrators in the configured log channel.
+The fix does not add raw endpoint, credential, or upstream-error data to logs or Discord responses. Incident IDs remain bounded SQLite identifiers for internal correlation and history; the administrator-facing `/acknowledge` flow no longer requires operators to enter them.

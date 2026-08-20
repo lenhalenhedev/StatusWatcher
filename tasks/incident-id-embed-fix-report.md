@@ -2,7 +2,7 @@
 
 ## Reported issue
 
-The `/acknowledge` command requires an `incident_id`, but the long-lived System Status Monitor embed did not display the identifier for confirmed-down services. The alert embeds already carried incident metadata, but the persistent status embed did not query or render it.
+The long-lived System Status Monitor embed did not display the durable incident identifier for confirmed-down services. The alert embeds already carried incident metadata, but the persistent status embed did not query or render it. The identifier remains useful for incident correlation and history, although the current `/acknowledge` command now uses a service dropdown instead of requiring operators to enter it.
 
 ## Root cause
 
@@ -14,7 +14,7 @@ For every confirmed-down website, database, Minecraft server, and Discord bot, t
 
 `Incident ID: \`<id>\``
 
-The ID remains visible after `/acknowledge`; acknowledgment suppresses repeated STILL_DOWN communication but does not remove the active incident or its identifier. Pending failures that have not crossed `CONFIRM_DOWN_THRESHOLD` do not receive an ID because no incident has been created yet. After recovery, the incident becomes RESOLVED and is no longer shown as active in the persistent DOWN section.
+The ID remains visible after a service is selected in `/acknowledge`; acknowledgment suppresses repeated STILL_DOWN communication but does not remove the active incident or its identifier. Pending failures that have not crossed `CONFIRM_DOWN_THRESHOLD` do not receive an ID because no incident has been created yet. After recovery, the incident becomes RESOLVED and is no longer shown as active in the persistent DOWN section.
 
 The lookup is fail-safe: a database lookup error or invalid result omits the identifier rather than exposing internal details or breaking the status embed. No endpoint, credential, raw exception, or sensitive service data is added.
 

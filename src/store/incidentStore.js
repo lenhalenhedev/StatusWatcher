@@ -6,6 +6,17 @@ const stmtGetOpen = db.prepare(`
   WHERE incident_key = ? AND status IN ('OPEN', 'ACKNOWLEDGED')
   ORDER BY id DESC LIMIT 1
 `);
+const stmtGetOpenByService = db.prepare(`
+  SELECT * FROM incidents
+  WHERE service_type = ? AND service_id = ? AND status = 'OPEN'
+  ORDER BY id DESC LIMIT 1
+`);
+const stmtListOpen = db.prepare(`
+  SELECT * FROM incidents
+  WHERE status = 'OPEN'
+  ORDER BY service_type ASC, name COLLATE NOCASE ASC, id DESC
+  LIMIT ?
+`);
 const stmtInsertIncident = db.prepare(`
   INSERT INTO incidents (
     incident_key, service_id, service_type, name, status, opened_at, updated_at,
@@ -57,6 +68,18 @@ export function getIncident(id) {
 
 export function getOpenIncident(incidentKey) {
   return stmtGetOpen.get(String(incidentKey)) ?? null;
+}
+
+export function getOpenIncidentForService(serviceType, serviceId) {
+  const type = String(serviceType ?? '').trim();
+  const id = String(serviceId ?? '').trim();
+  if (!type || !id) return null;
+  return stmtGetOpenByService.get(type, id) ?? null;
+}
+
+export function listOpenIncidents(limit = 25) {
+  const bounded = Number.isInteger(limit) ? Math.max(1, Math.min(limit, 25)) : 25;
+  return stmtListOpen.all(bounded);
 }
 
 export function createIncident(record) {
@@ -124,6 +147,11 @@ export function listIncidentsInWindow({ startAt, endAt, limit = 1000 } = {}) {
   if (!Number.isInteger(startAt) || !Number.isInteger(endAt) || startAt >= endAt) return [];
   const bounded = Number.isInteger(limit) ? Math.max(1, Math.min(limit, 5000)) : 1000;
   return stmtWindowIncidents.all({ startAt, endAt, limit: bounded });
+}
+
+export function acknowledgeIncidentForService(serviceType, serviceId, actorId, occurredAt = Date.now()) {
+  const incident = getOpenIncidentForService(serviceType, serviceId);
+  return incident ? acknowledgeIncident(incident.id, actorId, occurredAt) : null;
 }
 
 export function acknowledgeIncident(id, actorId, occurredAt = Date.now()) {

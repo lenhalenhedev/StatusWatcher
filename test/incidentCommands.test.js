@@ -22,7 +22,7 @@ function run(script) {
   }));
 }
 
-test('registers exact incident command names and validates administrator-only execution', () => {
+test('registers exact incident command names, removes the incident_id option, and validates administrator-only execution', () => {
   const result = run(`
     import { MessageFlags } from 'discord.js';
     import * as acknowledge from './src/commands/acknowledge.js';
@@ -47,13 +47,87 @@ test('registers exact incident command names and validates administrator-only ex
   assert.ok(result.content.every((content) => /configured admin/i.test(content)));
 });
 
+test('renders open incidents as service dropdown options and acknowledges the selected service', () => {
+  const result = run(`
+    import * as acknowledge from './src/commands/acknowledge.js';
+    import { createIncident, getIncident } from './src/store/incidentStore.js';
+    const website = createIncident({ incidentKey: 'website:status-page', serviceId: 'status-page', serviceType: 'website', name: 'Status page', status: 'OPEN', openedAt: 1000, updatedAt: 1000, errorCategory: 'HTTP_STATUS_FAILURE', statusCode: 503, downSince: 1000 });
+    const database = createIncident({ incidentKey: 'database:primary', serviceId: 'primary', serviceType: 'database', name: 'Primary database', status: 'OPEN', openedAt: 1100, updatedAt: 1100, errorCategory: 'CONNECTION_FAILURE', downSince: 1100 });
+    createIncident({ incidentKey: 'bot:status-bot', serviceId: 'status-bot', serviceType: 'bot', name: 'Status bot', status: 'OPEN', openedAt: 1200, updatedAt: 1200, errorCategory: 'BOT_OFFLINE', downSince: 1200 });
+    createIncident({ incidentKey: 'minecraft:survival', serviceId: 'survival', serviceType: 'minecraft', name: 'Survival server', status: 'OPEN', openedAt: 1300, updatedAt: 1300, errorCategory: 'MC_OFFLINE', downSince: 1300 });
+    const commandInteraction = {
+      user: { id: '123456789012345678' },
+      replies: [],
+      async reply(payload) { this.replies.push(payload); },
+    };
+    await acknowledge.execute(commandInteraction);
+    const menu = commandInteraction.replies[0].components[0].components[0].toJSON();
+    const selectedValue = menu.options.find((option) => option.label.includes('Status page')).value;
+    const componentInteraction = {
+      user: { id: '123456789012345678' },
+      customId: menu.custom_id,
+      values: [selectedValue],
+      replies: [],
+      async reply(payload) { this.replies.push(payload); },
+    };
+    await acknowledge.handleInteraction(componentInteraction);
+    const stored = getIncident(website.id);
+    process.stdout.write(JSON.stringify({
+      commandOptions: acknowledge.data.toJSON().options ?? [],
+      menu,
+      stored: { status: stored.status, acknowledged_by: stored.acknowledged_by },
+      reply: componentInteraction.replies[0].content,
+      untouchedDatabase: getIncident(database.id).status,
+    }));
+  `);
+  assert.deepEqual(result.commandOptions, []);
+  assert.equal(result.menu.custom_id, 'acknowledge:service');
+  assert.equal(result.menu.options.length, 4);
+  assert.ok(result.menu.options.some((option) => option.label.includes('Website') && option.label.includes('Status page')));
+  assert.ok(result.menu.options.some((option) => option.label.includes('Database') && option.label.includes('Primary database')));
+  assert.ok(result.menu.options.some((option) => option.label.includes('Bot') && option.label.includes('Status bot')));
+  assert.ok(result.menu.options.some((option) => option.label.includes('Minecraft') && option.label.includes('Survival server')));
+  assert.deepEqual(result.stored, { status: 'ACKNOWLEDGED', acknowledged_by: '123456789012345678' });
+  assert.match(result.reply, /Status page/);
+  assert.equal(result.untouchedDatabase, 'OPEN');
+});
+
+test('rejects stale service selections and unauthorized component interactions', () => {
+  const result = run(`
+    import * as acknowledge from './src/commands/acknowledge.js';
+    import { createIncident } from './src/store/incidentStore.js';
+    createIncident({ incidentKey: 'bot:bot-1', serviceId: 'bot-1', serviceType: 'bot', name: 'Bot one', status: 'OPEN', openedAt: 1000, updatedAt: 1000, downSince: 1000 });
+    const stale = {
+      user: { id: '123456789012345678' },
+      customId: 'acknowledge:service',
+      values: ['bot:missing'],
+      replies: [],
+      async reply(payload) { this.replies.push(payload); },
+    };
+    await acknowledge.handleInteraction(stale);
+    const unauthorized = {
+      user: { id: 'not-admin' },
+      customId: 'acknowledge:service',
+      values: ['bot:bot-1'],
+      replies: [],
+      async reply(payload) { this.replies.push(payload); },
+    };
+    await acknowledge.handleInteraction(unauthorized);
+    process.stdout.write(JSON.stringify({ stale: stale.replies[0], unauthorized: unauthorized.replies[0] }));
+  `);
+  assert.match(result.stale.content, /does not have an open incident|invalid|no longer available/i);
+  assert.equal(result.stale.flags, MessageFlags.Ephemeral);
+  assert.match(result.unauthorized.content, /configured admin/i);
+  assert.equal(result.unauthorized.flags, MessageFlags.Ephemeral);
+});
+
 test('acknowledges an active incident, resolves communication, and rejects repeated mutations', () => {
   const result = run(`
     import * as acknowledge from './src/commands/acknowledge.js';
     import * as resolveIncident from './src/commands/resolveIncident.js';
     import { createIncident, getIncident } from './src/store/incidentStore.js';
     const incident = createIncident({ incidentKey: 'website:website_1', serviceId: 'website_1', serviceType: 'website', name: 'Status page', status: 'OPEN', openedAt: 1000, updatedAt: 1000, errorCategory: 'HTTP_STATUS_FAILURE', statusCode: 503, downSince: 1000 });
-    function interaction(command) {
+    function interaction() {
       return {
         user: { id: '123456789012345678' },
         options: { getInteger: () => incident.id },
@@ -61,13 +135,16 @@ test('acknowledges an active incident, resolves communication, and rejects repea
         async reply(payload) { this.replies.push(payload); },
       };
     }
-    const ack = interaction(acknowledge);
-    await acknowledge.execute(ack);
-    const resolve = interaction(resolveIncident);
+    const ackCommand = interaction();
+    await acknowledge.execute(ackCommand);
+    const selectedValue = ackCommand.replies[0].components[0].components[0].toJSON().options[0].value;
+    const ack = { ...interaction(), customId: 'acknowledge:service', values: [selectedValue] };
+    await acknowledge.handleInteraction(ack);
+    const resolve = interaction();
     await resolveIncident.execute(resolve);
-    const repeatedAck = interaction(acknowledge);
-    await acknowledge.execute(repeatedAck);
-    const repeatedResolve = interaction(resolveIncident);
+    const repeatedAck = { ...interaction(), customId: 'acknowledge:service', values: [selectedValue] };
+    await acknowledge.handleInteraction(repeatedAck);
+    const repeatedResolve = interaction();
     await resolveIncident.execute(repeatedResolve);
     const stored = getIncident(incident.id);
     process.stdout.write(JSON.stringify({
@@ -86,6 +163,6 @@ test('acknowledges an active incident, resolves communication, and rejects repea
   assert.match(result.replies[0], /health monitoring continues/i);
   assert.match(result.replies[0], /UP event will automatically resolve/i);
   assert.match(result.replies[1], /communication resolved/i);
-  assert.match(result.replies[2], /not in an open state/i);
+  assert.match(result.replies[2], /does not have an open incident anymore/i);
   assert.match(result.replies[3], /already resolved/i);
 });

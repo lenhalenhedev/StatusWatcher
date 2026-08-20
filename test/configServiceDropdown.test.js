@@ -22,11 +22,11 @@ function serializedComponents(rows) {
 }
 
 test('renders only grouped service and config controls at the top level', () => {
-  assert.deepEqual(CONFIG_ITEMS.map((item) => item.id), ['add_service', 'remove_service', 'config']);
+  assert.deepEqual(CONFIG_ITEMS.map((item) => item.id), ['add_service', 'remove_service', 'config', 'add_maintenance', 'remove_maintenance']);
   const labels = buildConfigEmbed(0).components
     .flatMap((row) => row.components ?? [])
     .map((component) => component.data?.label);
-  assert.deepEqual(labels, ['Add Service', 'Remove Service', 'Config']);
+  assert.deepEqual(labels, ['Add Service', 'Remove Service', 'Config', 'Add Maintenance', 'Remove Maintenance']);
 });
 
 test('builds the Add Service dropdown with exactly the three supported services', () => {

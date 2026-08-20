@@ -3,6 +3,7 @@ import { logInfo } from '../utils/logger.js';
 import { registerTarget, recordDown, recordUp, getOpenSessionStart } from '../utils/uptimeTracker.js';
 import { listWebsiteTargets } from '../store/runtimeConfigStore.js';
 import { checkWebsite } from '../services/websiteStatusClient.js';
+import { appendLatencySample } from '../store/latencyStore.js';
 
 const states = new Map();
 
@@ -113,14 +114,31 @@ export async function checkWebsiteTargets(isConnected, { checkWebsiteImpl = chec
   const targets = Array.isArray(config.websiteTargets) ? config.websiteTargets : listWebsiteTargets();
   return Promise.all(targets.map(async (target) => {
     const state = stateFor(target);
+    const probeStartedAt = Date.now();
     try {
       const result = await checkWebsiteImpl(target);
+      appendLatencySample({
+        serviceId: target.id,
+        serviceType: 'website',
+        observedAt: Date.now(),
+        durationMs: result?.durationMs ?? (Date.now() - probeStartedAt),
+        success: Boolean(result?.ok),
+        statusCode: result?.status,
+      });
       return {
         target,
         state,
         event: result?.ok ? onlineResult(state, result) : offlineResult(state, result),
       };
     } catch (error) {
+      appendLatencySample({
+        serviceId: target.id,
+        serviceType: 'website',
+        observedAt: Date.now(),
+        durationMs: Date.now() - probeStartedAt,
+        success: false,
+        statusCode: error?.status,
+      });
       return { target, state, event: offlineResult(state, error) };
     }
   }));

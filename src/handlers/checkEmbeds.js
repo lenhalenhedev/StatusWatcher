@@ -48,6 +48,9 @@ export function buildTlsCheckEmbed(domain, port, result) {
       { name: 'Valid To', value: valueOrFallback(result.validTo), inline: true },
       { name: 'Fingerprint (SHA-256)', value: valueOrFallback(result.fingerprint256), inline: false },
     );
+  if (Array.isArray(result.forecastWarnings) && result.forecastWarnings.length > 0) {
+    embed.addFields({ name: 'Expiry Forecast', value: result.forecastWarnings.map((warning) => `${warning.thresholdDays}-day threshold reached (${warning.daysRemaining} day(s) remaining)`).join('\n').slice(0, 1024), inline: false });
+  }
   if (!result.authorized) embed.addFields({ name: 'Authorization', value: 'The certificate chain could not be authorized.', inline: false });
   return embed;
 }

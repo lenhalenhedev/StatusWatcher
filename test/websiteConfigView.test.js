@@ -17,12 +17,12 @@ function buttonLabels(view) {
 }
 
 test('renders grouped service controls and removes Minecraft retry controls', () => {
-  assert.deepEqual(CONFIG_ITEMS.map((item) => item.id), ['add_service', 'remove_service', 'config']);
+  assert.deepEqual(CONFIG_ITEMS.map((item) => item.id), ['add_service', 'remove_service', 'config', 'add_maintenance', 'remove_maintenance']);
   assert.equal(CONFIG_ITEMS.some((item) => item.id === 'mcRetryBaseMs'), false);
   assert.equal(CONFIG_ITEMS.some((item) => item.id === 'mcMaxRetries'), false);
 
   const labels = buttonLabels(buildConfigEmbed(0));
-  assert.deepEqual(labels, ['Add Service', 'Remove Service', 'Config']);
+  assert.deepEqual(labels, ['Add Service', 'Remove Service', 'Config', 'Add Maintenance', 'Remove Maintenance']);
 });
 
 test('builds a bounded website removal selector with pagination controls', () => {

@@ -1,6 +1,7 @@
 import { REST, Routes } from 'discord.js';
 import 'dotenv/config';
 import { commandModules } from './commands/index.js';
+import { logError } from './utils/logger.js';
 
 // Validate required env vars before deploy.
 if (!process.env.TOKEN || !process.env.CLIENT_ID || !process.env.GUILD_ID) {
@@ -19,6 +20,6 @@ try {
   );
   console.log('[DEPLOY] Registration complete. Run "npm start" to start the bot.');
 } catch (err) {
-  console.error('[DEPLOY] Failed to register commands:', err);
+  await logError('Deploy.registerCommands', err);
   process.exit(1);
 }

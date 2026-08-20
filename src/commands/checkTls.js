@@ -4,6 +4,7 @@ import { buildTlsCheckEmbed, diagnosticErrorMessage } from '../handlers/checkEmb
 import { checkTlsCertificate } from '../services/tlsCheckService.js';
 import { normalizeDomain, parsePort } from '../utils/checkNetworkInput.js';
 import { logError } from '../utils/logger.js';
+import { forecastCertificateWarnings } from '../services/tlsForecastService.js';
 
 export const data = new SlashCommandBuilder()
   .setName('check-tls')
@@ -43,7 +44,8 @@ export async function execute(interaction, dependencies = {}) {
     const port = parsePort(interaction.options.getInteger('port'), 443);
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const result = await (dependencies.checkTlsCertificate || checkTlsCertificate)(domain, { port });
-    await interaction.editReply({ embeds: [buildTlsCheckEmbed(domain, port, result)] });
+    const forecast = forecastCertificateWarnings({ expiresAt: Date.parse(result.validTo), now: Date.now() });
+    await interaction.editReply({ embeds: [buildTlsCheckEmbed(domain, port, { ...result, forecastWarnings: forecast.warnings })] });
   } catch (error) {
     const category = safeDiagnosticCategory(error);
     await (dependencies.reportError || logError)('CheckTls.execute', `category=${category}`);

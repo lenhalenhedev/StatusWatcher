@@ -39,6 +39,8 @@ import { getBotStates } from '../monitors/botMonitor.js';
 import { getMcStates, removeMcState } from '../monitors/mcMonitor.js';
 import { getDatabaseStates, initDatabaseMonitor, removeDatabaseState } from '../monitors/databaseMonitor.js';
 import { getWebsiteStates, initWebsiteMonitor, removeWebsiteState } from '../monitors/websiteMonitor.js';
+import { cancelWindow, listMaintenanceWindows, scheduleWindow } from '../services/maintenanceService.js';
+import { recordAudit } from '../store/auditStore.js';
 import {
   buildConfigEmbed,
   buildRemoveMinecraftComponents,
@@ -46,6 +48,8 @@ import {
   buildRemoveDatabaseComponents,
   buildServiceTypeComponents,
   buildRuntimeConfigComponents,
+  buildMaintenanceTargetComponents,
+  buildMaintenanceWindowComponents,
 } from './configView.js';
 
 export const data = new SlashCommandBuilder()
@@ -141,6 +145,56 @@ function addDatabaseModal() {
       new ActionRowBuilder().addComponents(connectString),
       new ActionRowBuilder().addComponents(ssl),
     );
+}
+
+function maintenanceTargets() {
+  const botTargets = [...getBotStates().entries()].map(([id, state]) => ({ id, name: state.name, type: 'bot' }));
+  return [
+    ...botTargets,
+    ...listMinecraftServers().map((target) => ({ id: target.id, name: target.name, type: 'minecraft' })),
+    ...listWebsiteTargets().map((target) => ({ id: target.id, name: target.name, type: 'website' })),
+    ...listDatabaseTargets().map((target) => ({ id: target.id, name: target.name, type: 'database' })),
+  ];
+}
+
+function maintenanceModal(target) {
+  const startsAt = new TextInputBuilder()
+    .setCustomId('starts_at')
+    .setLabel('Start time (ISO 8601 UTC)')
+    .setPlaceholder('2026-08-20T12:00:00Z')
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMaxLength(40);
+  const endsAt = new TextInputBuilder()
+    .setCustomId('ends_at')
+    .setLabel('End time (ISO 8601 UTC)')
+    .setPlaceholder('2026-08-20T13:00:00Z')
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMaxLength(40);
+  const reason = new TextInputBuilder()
+    .setCustomId('reason')
+    .setLabel('Reason')
+    .setPlaceholder('Planned database maintenance')
+    .setStyle(TextInputStyle.Paragraph)
+    .setRequired(true)
+    .setMaxLength(500);
+  return new ModalBuilder()
+    .setCustomId(`config:modal:add_maintenance:${target.id}`)
+    .setTitle(`Maintenance: ${target.name}`.slice(0, 45))
+    .addComponents(
+      new ActionRowBuilder().addComponents(startsAt),
+      new ActionRowBuilder().addComponents(endsAt),
+      new ActionRowBuilder().addComponents(reason),
+    );
+}
+
+function parseMaintenanceTime(raw) {
+  const value = String(raw ?? '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}T.*Z$/.test(value)) throw new Error('Maintenance timestamps must be ISO 8601 UTC values.');
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) throw new Error('Maintenance timestamp is invalid.');
+  return parsed;
 }
 
 function scalarModal(key) {
@@ -283,6 +337,10 @@ export async function handleInteraction(interaction) {
       await interaction.update({ content: 'Select the website to remove.', components: buildRemoveWebsiteComponents(listWebsiteTargets(), Number(value)) });
       return;
     }
+    if (action === 'remove_maintenance_page') {
+      await interaction.update({ content: 'Select the maintenance window to cancel.', components: buildMaintenanceWindowComponents(listMaintenanceWindows(), Number(value)) });
+      return;
+    }
     if (action === 'back') {
       await interaction.update({ content: '', embeds: [buildConfigEmbed(0).embed], components: buildConfigEmbed(0).components });
       return;
@@ -299,6 +357,22 @@ export async function handleInteraction(interaction) {
       await interaction.update({
         content: 'Select the runtime setting to configure.',
         components: buildRuntimeConfigComponents(),
+      });
+      return;
+    }
+    if (value === 'add_maintenance') {
+      const targets = maintenanceTargets();
+      await interaction.update({
+        content: targets.length ? 'Select a monitored service for the maintenance window.' : 'No monitored services are configured.',
+        components: targets.length ? buildMaintenanceTargetComponents(targets) : buildConfigEmbed(0).components,
+      });
+      return;
+    }
+    if (value === 'remove_maintenance') {
+      const windows = listMaintenanceWindows();
+      await interaction.update({
+        content: windows.length ? 'Select the maintenance window to cancel.' : 'No active or future maintenance windows exist.',
+        components: windows.length ? buildMaintenanceWindowComponents(windows) : buildConfigEmbed(0).components,
       });
       return;
     }
@@ -340,6 +414,31 @@ export async function handleInteraction(interaction) {
     return;
   }
 
+  if (interaction.isStringSelectMenu() && String(interaction.customId) === 'config:add_maintenance:select') {
+    const target = maintenanceTargets().find((item) => item.id === interaction.values[0]);
+    if (!target) {
+      await interaction.update({ content: 'That monitored service no longer exists.', components: buildConfigEmbed(0).components });
+      return;
+    }
+    await interaction.showModal(maintenanceModal(target));
+    return;
+  }
+
+  if (interaction.isStringSelectMenu() && String(interaction.customId).startsWith('config:remove_maintenance:select')) {
+    await interaction.deferUpdate();
+    const id = Number(interaction.values[0]);
+    if (!Number.isInteger(id) || !cancelWindow(id)) {
+      const view = buildConfigEmbed(0);
+      await interaction.editReply({ content: 'That maintenance window no longer exists.', embeds: [view.embed], components: view.components });
+      return;
+    }
+    recordAudit({ action: 'CANCEL_MAINTENANCE', actorId: interaction.user.id, targetType: 'maintenance', targetId: String(id) });
+    await refreshAfterConfigChange(interaction);
+    const view = buildConfigEmbed(0);
+    await interaction.editReply({ content: `Maintenance window **${id}** was cancelled.`, embeds: [view.embed], components: view.components });
+    return;
+  }
+
   if (interaction.isStringSelectMenu() && String(interaction.customId) === 'config:runtime:select') {
     const key = interaction.values[0];
     if (RUNTIME_CONFIG_DEFINITIONS[key]) await interaction.showModal(scalarModal(key));
@@ -357,6 +456,7 @@ export async function handleInteraction(interaction) {
       return;
     }
     deleteMinecraftServer(id);
+    recordAudit({ action: 'REMOVE_SERVICE', actorId: interaction.user.id, targetType: 'minecraft', targetId: id });
     deleteTarget(id);
     removeMcState(id);
     await refreshAfterConfigChange(interaction);
@@ -375,6 +475,7 @@ export async function handleInteraction(interaction) {
       return;
     }
     deleteWebsiteTarget(id);
+    recordAudit({ action: 'REMOVE_SERVICE', actorId: interaction.user.id, targetType: 'website', targetId: id });
     deleteTarget(id);
     removeWebsiteState(id);
     await refreshAfterConfigChange(interaction);
@@ -393,6 +494,7 @@ export async function handleInteraction(interaction) {
       return;
     }
     deleteDatabaseTarget(id);
+    recordAudit({ action: 'REMOVE_SERVICE', actorId: interaction.user.id, targetType: 'database', targetId: id });
     deleteTarget(id);
     await removeDatabaseState(id);
     await refreshAfterConfigChange(interaction);
@@ -411,6 +513,7 @@ export async function handleInteraction(interaction) {
         if (!name) throw new Error('Server name is required.');
         const id = `minecraft_${randomUUID()}`;
         saveMinecraftServer({ id, name, host, port });
+        recordAudit({ action: 'ADD_SERVICE', actorId: interaction.user.id, targetType: 'minecraft', targetId: id, value: { name, host, port } });
         registerTarget(id, name, { type: 'minecraft' });
         await refreshAfterConfigChange(interaction);
         await interaction.editReply({ content: `Minecraft server **${name}** was added and is now monitored.` });
@@ -423,9 +526,25 @@ export async function handleInteraction(interaction) {
         const url = normalizeWebsiteUrl(interaction.fields.getTextInputValue('url'));
         const id = `website_${randomUUID()}`;
         saveWebsiteTarget({ id, name, url });
+        recordAudit({ action: 'ADD_SERVICE', actorId: interaction.user.id, targetType: 'website', targetId: id, value: { name, url } });
         registerTarget(id, name, { type: 'website' });
         await refreshAfterConfigChange(interaction);
         await interaction.editReply({ content: `Website **${name}** was added and is now monitored.` });
+        return;
+      }
+
+      if (key === 'add_maintenance') {
+        const targetId = String(interaction.customId).split(':')[3] ?? '';
+        const target = maintenanceTargets().find((item) => item.id === targetId);
+        if (!target) throw new Error('The selected monitored service no longer exists.');
+        const startsAt = parseMaintenanceTime(interaction.fields.getTextInputValue('starts_at'));
+        const endsAt = parseMaintenanceTime(interaction.fields.getTextInputValue('ends_at'));
+        const reason = interaction.fields.getTextInputValue('reason').trim();
+        const window = scheduleWindow({ serviceId: target.id, serviceType: target.type, startsAt, endsAt, reason, createdBy: interaction.user.id });
+        if (!window) throw new Error('The maintenance window values are invalid.');
+        recordAudit({ action: 'SCHEDULE_MAINTENANCE', actorId: interaction.user.id, targetType: target.type, targetId: target.id, value: { startsAt, endsAt, reason } });
+        await refreshAfterConfigChange(interaction);
+        await interaction.editReply({ content: `Maintenance window **${window.id}** was scheduled for **${target.name}** and applied immediately.` });
         return;
       }
 
@@ -435,6 +554,7 @@ export async function handleInteraction(interaction) {
         const sslEnabled = parseDatabaseSsl(interaction.fields.getTextInputValue('ssl'));
         const id = `database_${randomUUID()}`;
         saveDatabaseTarget({ id, name, engine: connection.engine, connectionString: connection.value, sslEnabled });
+        recordAudit({ action: 'ADD_SERVICE', actorId: interaction.user.id, targetType: 'database', targetId: id, value: { name, engine: connection.engine, connectionString: connection.value, sslEnabled } });
         registerTarget(id, name, { type: 'database' });
         await refreshAfterConfigChange(interaction);
         const requestId = sslEnabled ? await requestOptionalCertificate(interaction, id, name) : null;
@@ -447,7 +567,9 @@ export async function handleInteraction(interaction) {
 
       if (!RUNTIME_CONFIG_DEFINITIONS[key]) throw new Error('Unknown configuration field.');
       const raw = interaction.fields.getTextInputValue('value');
-      setRuntimeConfigValue(key, serializeRuntimeConfigValue(key, raw));
+      const serializedValue = serializeRuntimeConfigValue(key, raw);
+      setRuntimeConfigValue(key, serializedValue);
+      recordAudit({ action: 'SET_RUNTIME_CONFIG', actorId: interaction.user.id, targetType: 'runtime_config', targetId: key, value: serializedValue });
       await refreshAfterConfigChange(interaction);
       await interaction.editReply({ content: `Saved **${RUNTIME_CONFIG_DEFINITIONS[key].label}** to SQLite and applied it immediately.` });
     } catch {

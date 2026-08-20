@@ -12,6 +12,15 @@ import * as configCommand from './configCommand.js';
 import * as checkTls from './checkTls.js';
 import * as checkDns from './checkDns.js';
 import * as whois from './whois.js';
+import * as acknowledge from './acknowledge.js';
+import * as resolveIncident from './resolveIncident.js';
+import * as reliability from './reliability.js';
+import * as dependency from './dependency.js';
+import * as dryRun from './dryRun.js';
+import * as diagnose from './diagnose.js';
+import * as slo from './slo.js';
+import * as audit from './audit.js';
+import * as ownership from './ownership.js';
 
 /**
  * Every slash command module. Each exports `data` (a SlashCommandBuilder) and
@@ -32,6 +41,15 @@ export const commandModules = [
   checkTls,
   checkDns,
   whois,
+  acknowledge,
+  resolveIncident,
+  reliability,
+  dependency,
+  dryRun,
+  diagnose,
+  slo,
+  audit,
+  ownership,
 ];
 
 /** Lookup map keyed by command name for fast dispatch. */

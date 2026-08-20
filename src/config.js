@@ -6,8 +6,10 @@ import {
   listMinecraftServers,
   saveMinecraftServer,
   listWebsiteTargets,
+  getRuntimeConfigValue,
   deleteRuntimeConfigValue,
 } from './store/runtimeConfigStore.js';
+import { logError } from './utils/logger.js';
 import { listDatabaseTargets } from './store/databaseStore.js';
 import {
   parseRuntimeConfigValue,
@@ -157,7 +159,7 @@ export function reloadRuntimeConfig() {
     try {
       listener(config);
     } catch (err) {
-      console.error('[CONFIG] Runtime config listener failed:', err);
+      void logError('Config.runtimeListener', err);
     }
   }
   return config;

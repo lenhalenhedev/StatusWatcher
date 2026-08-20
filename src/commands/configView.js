@@ -7,6 +7,7 @@ import {
 } from 'discord.js';
 import config from '../config.js';
 import { RUNTIME_CONFIG_DEFINITIONS } from '../config/runtimeConfigSchema.js';
+import { listMaintenanceWindows } from '../store/maintenanceStore.js';
 
 export const CONFIG_PAGE_SIZE = 23;
 export const CONFIG_NAV_PAGE_SIZE = 20;
@@ -21,6 +22,8 @@ export const CONFIG_ITEMS = Object.freeze([
   { id: 'add_service', label: 'Add Service', description: 'Choose MC, Website, or Database to add a monitored service.' },
   { id: 'remove_service', label: 'Remove Service', description: 'Choose MC, Website, or Database to remove a monitored service.' },
   { id: 'config', label: 'Config', description: 'Choose one runtime setting to validate, save to SQLite, and apply immediately.' },
+  { id: 'add_maintenance', label: 'Add Maintenance', description: 'Schedule an alert-suppression window for a monitored service.' },
+  { id: 'remove_maintenance', label: 'Remove Maintenance', description: 'Cancel a scheduled or active maintenance window.' },
 ]);
 
 const RUNTIME_CONFIG_OPTIONS = Object.freeze(Object.entries(RUNTIME_CONFIG_DEFINITIONS).map(([id, definition]) => ({
@@ -33,6 +36,8 @@ function displayValue(id) {
   if (id === 'add_service') return `${config.mcServers.length + config.websiteTargets.length + config.databaseTargets.length} service(s) available`;
   if (id === 'remove_service') return `${config.mcServers.length + config.websiteTargets.length + config.databaseTargets.length} service(s) configured`;
   if (id === 'config') return `${RUNTIME_CONFIG_OPTIONS.length} runtime setting(s)`;
+  if (id === 'add_maintenance') return 'Schedule a service window';
+  if (id === 'remove_maintenance') return `${listMaintenanceWindows().length} active or future window(s)`;
   if (id === 'checkIntervalSec') return `${config.checkInterval / 1_000}s`;
   if (id === 'confirmDownThresholdSec') return `${config.confirmDownThresholdMs / 1_000}s`;
   if (id === 'checkIntervalDisplayLogSec') return `${config.checkIntervalDisplayLogSec}s`;
@@ -44,7 +49,7 @@ function displayValue(id) {
 
 export function buildConfigEmbed(page = 0) {
   // Discord allows at most five action rows. A navigation row consumes one,
-  // leaving four rows × five buttons when pagination is required.
+  // leaving four rows by five buttons when pagination is required.
   const pageSize = CONFIG_ITEMS.length > CONFIG_PAGE_SIZE ? CONFIG_NAV_PAGE_SIZE : CONFIG_PAGE_SIZE;
   const maxPage = Math.max(0, Math.ceil(CONFIG_ITEMS.length / pageSize) - 1);
   const safePage = Math.min(Math.max(Number(page) || 0, 0), maxPage);
@@ -109,6 +114,53 @@ export function buildServiceTypeComponents(action) {
       new ButtonBuilder().setCustomId('config:back').setLabel('Back').setStyle(ButtonStyle.Secondary),
     ),
   ];
+}
+
+export function buildMaintenanceTargetComponents(targets) {
+  const options = targets.slice(0, 25).map((target) => ({
+    label: String(target.name).slice(0, 100),
+    description: `${target.type} service`.slice(0, 100),
+    value: String(target.id),
+  }));
+  return [
+    new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId('config:add_maintenance:select')
+        .setPlaceholder('Select a monitored service.')
+        .addOptions(options),
+    ),
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('config:back').setLabel('Back').setStyle(ButtonStyle.Secondary),
+    ),
+  ];
+}
+
+export function buildMaintenanceWindowComponents(windows, page = 0) {
+  const pageSize = 25;
+  const maxPage = Math.max(0, Math.ceil(windows.length / pageSize) - 1);
+  const safePage = Math.min(Math.max(Number(page) || 0, 0), maxPage);
+  const options = windows.slice(safePage * pageSize, (safePage + 1) * pageSize).map((window) => ({
+    label: `${window.service_type} maintenance #${window.id}`.slice(0, 100),
+    description: `Starts ${new Date(window.starts_at).toISOString()}`.slice(0, 100),
+    value: String(window.id),
+  }));
+  const rows = [];
+  if (maxPage > 0) {
+    rows.push(new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`config:remove_maintenance_page:${safePage - 1}`).setLabel('PREV').setStyle(ButtonStyle.Secondary).setDisabled(safePage === 0),
+      new ButtonBuilder().setCustomId(`config:remove_maintenance_page:${safePage + 1}`).setLabel('NEXT').setStyle(ButtonStyle.Secondary).setDisabled(safePage === maxPage),
+    ));
+  }
+  rows.push(new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(`config:remove_maintenance:select:${safePage}`)
+      .setPlaceholder(`Select a maintenance window (${safePage + 1}/${maxPage + 1})`)
+      .addOptions(options),
+  ));
+  rows.push(new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('config:back').setLabel('Back').setStyle(ButtonStyle.Secondary),
+  ));
+  return rows;
 }
 
 export function buildRuntimeConfigComponents() {

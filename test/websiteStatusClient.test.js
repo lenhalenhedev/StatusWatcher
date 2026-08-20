@@ -31,6 +31,8 @@ test('returns UP for a successful HTTP status and does not consume the response 
   assert.equal(result.ok, true);
   assert.equal(result.status, 204);
   assert.equal(result.code, 'HTTP_OK');
+  assert.equal(Number.isInteger(result.durationMs), true);
+  assert.ok(result.durationMs >= 0);
   assert.equal(bodyRead, true);
   assert.equal(request.method, 'GET');
   assert.equal(request.redirect, 'error');
@@ -46,12 +48,11 @@ test('uses Response.status and treats 4xx/5xx as a bounded HTTP failure', async 
     },
   );
 
-  assert.deepEqual(result, {
-    ok: false,
-    status: 503,
-    code: 'HTTP_ERROR',
-    error: 'HTTP status 503',
-  });
+  assert.equal(result.ok, false);
+  assert.equal(result.status, 503);
+  assert.equal(result.code, 'HTTP_ERROR');
+  assert.equal(result.error, 'HTTP status 503');
+  assert.equal(Number.isInteger(result.durationMs), true);
 });
 
 test('rejects redirect responses without following a second destination', async () => {
@@ -82,7 +83,11 @@ test('maps AbortError and TimeoutError to a safe timeout category', async () => 
         fetchImpl: async () => { throw Object.assign(new Error('secret raw endpoint'), { name }); },
       },
     );
-    assert.deepEqual(result, { ok: false, status: null, code: 'TIMEOUT', error: 'Request timed out' });
+    assert.equal(result.ok, false);
+    assert.equal(result.status, null);
+    assert.equal(result.code, 'TIMEOUT');
+    assert.equal(result.error, 'Request timed out');
+    assert.equal(Number.isInteger(result.durationMs), true);
   }
 });
 
@@ -95,7 +100,11 @@ test('maps arbitrary network errors without forwarding raw error text', async ()
     },
   );
 
-  assert.deepEqual(result, { ok: false, status: null, code: 'NETWORK_ERROR', error: 'Network request failed' });
+  assert.equal(result.ok, false);
+  assert.equal(result.status, null);
+  assert.equal(result.code, 'NETWORK_ERROR');
+  assert.equal(result.error, 'Network request failed');
+  assert.equal(Number.isInteger(result.durationMs), true);
   assert.equal(JSON.stringify(result).includes('secret'), false);
   assert.equal(JSON.stringify(result).includes('10.0.0.1'), false);
 });

@@ -1,5 +1,6 @@
 import { lookup as dnsLookup } from 'node:dns/promises';
 import net from 'node:net';
+import { performance } from 'node:perf_hooks';
 import { isForbiddenAddress } from '../utils/checkNetworkInput.js';
 
 export const WEBSITE_REQUEST_TIMEOUT_MS = 15_000;
@@ -43,7 +44,7 @@ export function normalizeWebsiteUrl(raw) {
   return url.toString();
 }
 
-async function assertPublicDestination(urlString, lookupImpl) {
+export async function assertPublicDestination(urlString, lookupImpl = dnsLookup) {
   const url = new URL(urlString);
   const hostname = normalizeIpHost(url.hostname);
   if (net.isIP(hostname)) return;
@@ -81,12 +82,22 @@ async function cancelBody(response) {
  * Validation errors are thrown for the caller to reject before persistence or monitoring.
  * Network and HTTP outcomes are returned as safe, category-only results.
  */
-export async function checkWebsite(target, { lookupImpl = dnsLookup, fetchImpl = globalThis.fetch } = {}) {
+export async function validateWebsiteTarget(target, { lookupImpl = dnsLookup } = {}) {
   const url = normalizeWebsiteUrl(target?.url);
   await assertPublicDestination(url, lookupImpl);
+  return url;
+}
+
+export async function checkWebsite(target, { lookupImpl = dnsLookup, fetchImpl = globalThis.fetch } = {}) {
+  const startedAt = performance.now();
+  const withDuration = (result) => ({
+    ...result,
+    durationMs: Math.min(WEBSITE_REQUEST_TIMEOUT_MS, Math.max(0, Math.round(performance.now() - startedAt))),
+  });
+  const url = await validateWebsiteTarget(target, { lookupImpl });
 
   if (typeof fetchImpl !== 'function') {
-    return { ok: false, status: null, code: 'NETWORK_ERROR', error: 'Network request failed' };
+    return withDuration({ ok: false, status: null, code: 'NETWORK_ERROR', error: 'Network request failed' });
   }
 
   let response;
@@ -99,17 +110,17 @@ export async function checkWebsite(target, { lookupImpl = dnsLookup, fetchImpl =
 
     const status = Number(response?.status);
     if (!Number.isInteger(status) || status < 100 || status > 599) {
-      return { ok: false, status: null, code: 'INVALID_RESPONSE', error: 'Invalid HTTP response' };
+      return withDuration({ ok: false, status: null, code: 'INVALID_RESPONSE', error: 'Invalid HTTP response' });
     }
     if (status >= 200 && status < 400) {
-      return { ok: true, status, code: 'HTTP_OK', error: null };
+      return withDuration({ ok: true, status, code: 'HTTP_OK', error: null });
     }
-    return { ok: false, status, code: 'HTTP_ERROR', error: `HTTP status ${status}` };
+    return withDuration({ ok: false, status, code: 'HTTP_ERROR', error: `HTTP status ${status}` });
   } catch (error) {
     if (isTimeoutError(error)) {
-      return { ok: false, status: null, code: 'TIMEOUT', error: 'Request timed out' };
+      return withDuration({ ok: false, status: null, code: 'TIMEOUT', error: 'Request timed out' });
     }
-    return { ok: false, status: null, code: 'NETWORK_ERROR', error: 'Network request failed' };
+    return withDuration({ ok: false, status: null, code: 'NETWORK_ERROR', error: 'Network request failed' });
   } finally {
     await cancelBody(response);
   }

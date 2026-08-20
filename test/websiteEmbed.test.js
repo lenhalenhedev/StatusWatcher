@@ -12,6 +12,7 @@ process.env.ADMIN_USER_ID ??= '123456789012345678';
 
 const { buildStatusEmbed } = await import('../src/handlers/embedBuilder.js');
 const { registerTarget } = await import('../src/utils/uptimeTracker.js');
+const { createIncident, updateIncident } = await import('../src/store/incidentStore.js');
 
 function fieldsOf(embed) {
   return embed.toJSON().fields ?? [];
@@ -46,6 +47,19 @@ test('renders Websites before Databases and includes the HTTP response status', 
 
 test('renders confirmed website failures with safe status and bounded field length', () => {
   registerTarget('website_embed_down', 'Down Website', { type: 'website' });
+  const incident = createIncident({
+    incidentKey: 'website:website_embed_down',
+    serviceId: 'website_embed_down',
+    serviceType: 'website',
+    name: 'Down Website',
+    status: 'OPEN',
+    openedAt: Date.now(),
+    updatedAt: Date.now(),
+    resolvedAt: null,
+    errorCategory: 'HTTP_STATUS_FAILURE',
+    statusCode: 503,
+    downSince: Date.now(),
+  });
   const websiteStates = new Map([['website_embed_down', {
     id: 'website_embed_down',
     name: 'Down Website',
@@ -61,5 +75,9 @@ test('renders confirmed website failures with safe status and bounded field leng
   assert.equal(fields[0].name, '🌐 Websites');
   assert.match(fields[0].value, /DOWN/);
   assert.match(fields[0].value, /HTTP 503/);
-  assert.ok(fields[0].value.length <= 1024);
+  assert.ok(fields[0].value.includes(`Incident ID: \`${incident.id}\``));
+  updateIncident(incident.id, { status: 'ACKNOWLEDGED', acknowledgedBy: '123456789012345678', acknowledgedAt: Date.now() });
+  const acknowledgedFields = fieldsOf(buildStatusEmbed(new Map(), new Map(), 0, null, websiteStates));
+  assert.ok(acknowledgedFields[0].value.includes(`Incident ID: \`${incident.id}\``));
+  assert.ok(acknowledgedFields[0].value.length <= 1024);
 });

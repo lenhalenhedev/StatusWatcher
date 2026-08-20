@@ -8,6 +8,8 @@ import {
   getOpenSessionStart,
 } from '../utils/uptimeTracker.js';
 import config from '../config.js';
+import { buildIncidentKey } from '../incidents/incidentKey.js';
+import { getOpenIncident } from '../store/incidentStore.js';
 import { getStatusPage } from './statusPagination.js';
 
 // Standard status colors.
@@ -58,6 +60,15 @@ function safeWebsiteUrl(value) {
   }
 }
 
+function activeIncidentId(serviceType, serviceId) {
+  try {
+    const incident = getOpenIncident(buildIncidentKey({ serviceType, serviceId }));
+    return Number.isSafeInteger(incident?.id) && incident.id > 0 ? incident.id : null;
+  } catch {
+    return null;
+  }
+}
+
 export function buildStatusEmbed(botStates, mcStates, page = 0, databaseStates = null, websiteStates = null) {
   const { currentPage, totalPages, bots } = getStatusPage(botStates, page);
   const embed = new EmbedBuilder()
@@ -75,7 +86,7 @@ export function buildStatusEmbed(botStates, mcStates, page = 0, databaseStates =
         const min = downtimeMinutes(websiteState.id, websiteState.confirmedDownAt);
         const errorText = String(websiteState.lastError ?? 'Website probe failed.').substring(0, 180);
         const status = Number.isInteger(websiteState.lastStatus) ? ` — HTTP ${websiteState.lastStatus}` : '';
-        return `🔴 **DOWN** — \`${websiteState.name}\`${status} — Down for **${min} min**\nURL: \`${url}\`\nError: ${errorText}\n${buildUptimeLine(websiteState.id)}`;
+        return `🔴 **DOWN** — \`${websiteState.name}\`${status} — Down for **${min} min**\nURL: \`${url}\`\nError: ${errorText}${incidentLabel({ incidentId: activeIncidentId('website', websiteState.id) })}\n${buildUptimeLine(websiteState.id)}`;
       }
       if (websiteState.lastHealthyAt) {
         const status = Number.isInteger(websiteState.lastStatus) ? ` — HTTP ${websiteState.lastStatus}` : '';
@@ -97,7 +108,7 @@ export function buildStatusEmbed(botStates, mcStates, page = 0, databaseStates =
       if (databaseState.isConfirmedDown) {
         const min = downtimeMinutes(databaseState.id, databaseState.confirmedDownAt);
         const errorText = String(databaseState.lastError ?? 'Database probe failed.').substring(0, 180);
-        return `🔴 **DOWN** — \`${databaseState.name}\` — \`${databaseState.engine}\` — Down for **${min} min**\nError: ${errorText}\n${buildUptimeLine(databaseState.id)}`;
+        return `🔴 **DOWN** — \`${databaseState.name}\` — \`${databaseState.engine}\` — Down for **${min} min**\nError: ${errorText}${incidentLabel({ incidentId: activeIncidentId('database', databaseState.id) })}\n${buildUptimeLine(databaseState.id)}`;
       }
       if (databaseState.lastHealthyAt) {
         return `🟢 **ONLINE** — \`${databaseState.name}\` — \`${databaseState.engine}\`\n${buildUptimeLine(databaseState.id)}`;
@@ -123,7 +134,7 @@ export function buildStatusEmbed(botStates, mcStates, page = 0, databaseStates =
         const min = downtimeMinutes(mcState.id, mcState.confirmedDownAt);
         const errorText = String(mcState.lastError ?? 'Unknown connection error').substring(0, 300);
         line = `🔴 **DOWN** — \`${mcState.name}\` — Down for **${min} min**\n` +
-          `Error: ${errorText}\n${buildUptimeLine(mcState.id)}`;
+          `Error: ${errorText}${incidentLabel({ incidentId: activeIncidentId('minecraft', mcState.id) })}\n${buildUptimeLine(mcState.id)}`;
       } else if (mcState.lastPingData) {
         const players = mcState.lastPingData.players ?? 0;
         const maxPlayers = mcState.lastPingData.maxPlayers ?? 0;
@@ -165,7 +176,7 @@ export function buildStatusEmbed(botStates, mcStates, page = 0, databaseStates =
 
     if (state.isConfirmedDown) {
       const min = downtimeMinutes(id, state.confirmedDownAt);
-      botLine = `🔴 **${name}**${star} — DOWN (**${min} min**)\n   └ ${buildUptimeLine(id)}`;
+      botLine = `🔴 **${name}**${star} — DOWN (**${min} min**)${incidentLabel({ incidentId: activeIncidentId('bot', id) })}\n   └ ${buildUptimeLine(id)}`;
     } else {
       botLine = `🟢 **${name}**${star} — ONLINE\n   └ ${buildUptimeLine(id)}`;
     }
